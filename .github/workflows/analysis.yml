@@ -72,8 +72,7 @@ jobs:
       - name: 5. Run analysis
         run: |
             echo ">>> 运行分析脚本..."
-            cd ./roll && python ./roll.py model ls all=1
-            cd ./roll && python ./roll.py model selection
+            cd ./roll && python ./roll.py model ls all=1 && python ./roll.py model selection
 
       - name: 提交分析结果到 qlib_score 分支
         run: |
