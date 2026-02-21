@@ -5,6 +5,8 @@ on:
       - main
   pull_request:
     types: [opened, synchronize, reopened]
+  # 保留手动触发按钮，方便调试
+  workflow_dispatch:
 jobs:
   sonarqube:
     name: SonarQube
