@@ -68,7 +68,7 @@ python roll.py data update
 python roll.py data status
 ```
 
-### 第三步：模型训练
+### 第二步：模型训练
 
 ```bash
 # 训练一个基于 Alpha158 因子、沪深300、滑动窗口的 XGBoost 模型
@@ -80,7 +80,7 @@ python ./roll.py train start --model_names="XGBoost" --dataset_names="Alpha158" 
 tar -zxvf ./model_pkl/qlib_mlruns.tar.gz -C ~
 ```
 
-### 第四步：模型预测
+### 第三步：模型预测
 
 ```bash
 # 1. 自动预测最新一天 (根据本地数据更新情况)
