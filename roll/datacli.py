@@ -25,7 +25,7 @@ class DataCLI:
             return False
         return True
 
-    def update(self):
+    def update(self, proxy = "A"):
         """
         Update market data for the specified region
         """
@@ -36,7 +36,26 @@ class DataCLI:
             logger.info("Qlib data is up to date")
             self.status()
             return
-        run_command("cd ~/investment_data && bash ./dump_qlib_bin.sh")
+
+        proxyA = "https://gh-proxy.org/"
+        proxyB = "https://hk.gh-proxy.org/"
+        proxyC = "https://cdn.gh-proxy.org/"
+        proxyD = "https://edgeone.gh-proxy.org/"
+        url = "https://github.com/chenditc/investment_data/releases/latest/download/qlib_bin.tar.gz"
+
+        proxy_map = {
+            "A": proxyA,
+            "B": proxyB,
+            "C": proxyC,
+            "D": proxyD
+        }
+        use_proxy = proxy_map.get(proxy.upper(), proxy)
+        wget_cmd = f"wget --no-proxy {use_proxy}{url} -O ~/tmp/qlib_bin.tar.gz"
+        logger.info(f"使用代理 [{proxy}] 下载数据包...")
+
+        run_command(wget_cmd)
+        run_command("tar -zxvf ~/tmp/qlib_bin.tar.gz -C ~/.qlib/qlib_data/cn_data --strip-components=1")
+        logger.info("数据更新完成。")
         self.status()
 
     def status(self) -> None:
