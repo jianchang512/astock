@@ -219,7 +219,8 @@ class ModelCLI:
             df_final,
             label_clean,
             on=['datetime', 'instrument'],
-            how='left'
+            how='left',
+            validate="many_to_one" # df_fainal 是 多个 模型预测的结果, label_clean 是 每个股票每天一个真实结果
         )
         result_df['error'] = result_df['score'] - result_df['real_label']
         result_df['abs_error'] = result_df['error'].abs()
