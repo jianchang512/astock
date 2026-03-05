@@ -15,11 +15,12 @@ import os
 from tqdm import tqdm
 from functools import partialmethod
 from pprint import pprint
-import datetime
+from datetime import datetime
 from qlib.contrib.data.handler import Alpha158, Alpha360
 from dataclasses import dataclass, field
 from typing import List
 import logging
+import tarfile
 
 # --- 常量定义：解决 Magic Strings 问题 ---
 PARAMS_FILE = "params.pkl"
@@ -134,7 +135,7 @@ class ModelCLI:
         start_time = rec.info['start_time'].split()[0]
         end_time = rec.info['end_time'].split()[0]
         data_train = task['dataset']['kwargs']['segments']['train']
-        return [data_train[0].strftime("%Y-%m-%d"), data_train[1].strftime("%Y-%m-%d")], [start_time, end_time]
+        return [data_train[0], data_train[1]], [start_time, end_time]
 
     def print_rec(self, rec):
         task = rec.load_object("task")

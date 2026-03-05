@@ -3,9 +3,10 @@ import re
 import sys
 import subprocess
 import hashlib
-import datetime
 from typing import Optional, Tuple, List, Union
 from pathlib import Path
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 # 第三方库
 import requests
@@ -161,14 +162,14 @@ def get_latest_trade_date_ak():
     """获取最近一个已收盘的交易日"""
     try:
         trade_calendar = ak.tool_trade_date_hist_sina()
-        today = datetime.datetime.now().date()
+        today = datetime.now().date()
         past_days = [d for d in trade_calendar['trade_date'].tolist() if d <= today]
 
         if not past_days: return None
 
         last_day = past_days[-1]
         # 如果是今天且未收盘（15:00），取前一天
-        if today == last_day and datetime.datetime.now().hour < 15:
+        if today == last_day and datetime.now().hour < 15:
             return past_days[-2] if len(past_days) > 1 else last_day
         return last_day
     except Exception as e:
@@ -211,3 +212,43 @@ def fix_mlflow_paths(mlruns_dir: Optional[str] = None):
                 logger.error(f"修复失败 {yaml_path}: {e}")
 
     logger.info(f"路径修复完成，共修改 {fix_count} 处。")
+
+
+
+def generate_qlib_segments(months_total=12, end_date_str=None):
+    """
+    根据给定的总月数，按 9:2:1 比例动态生成 train, valid, test 范围
+    :param months_total: 总共回溯的月数
+    :param end_date_str: 截止日期 (YYYY-MM-DD)，留空则默认为今天
+    """
+    if end_date_str:
+        t_end = datetime.strptime(end_date_str, "%Y-%m-%d")
+    else:
+        t_end = datetime.now()
+
+    # 1. 计算比例单位 (9 + 2 + 1 = 12 份)
+    # 每一份代表的月数 = 总月数 / 12
+    unit = months_total / 12.0
+
+    # 2. 计算各段长度（月数）
+    test_months = unit * 1  # 占 1 份
+    valid_months = unit * 2 # 占 2 份
+    train_months = unit * 9 # 占 9 份
+
+    # 3. 倒推各个时间节点
+    # t0(起点) ----[train]---- t1 ----[valid]---- t2 ----[test]---- t3(终点)
+    t3 = t_end
+    t2 = t3 - relativedelta(months=int(test_months))
+    t1 = t2 - relativedelta(months=int(valid_months))
+    t0 = t1 - relativedelta(months=int(train_months))
+
+    def to_s(dt): return dt.strftime("%Y-%m-%d")
+
+    # 4. 组装结果 (减去 1 天确保区间不重叠)
+    segments = {
+        "train": (to_s(t0), to_s(t1 - relativedelta(days=1))),
+        "valid": (to_s(t1), to_s(t2 - relativedelta(days=1))),
+        "test":  (to_s(t2), to_s(t3))
+    }
+
+    return segments

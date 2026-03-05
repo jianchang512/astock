@@ -11,11 +11,12 @@ sfx_name: s
 
 # 模型与数据集配置
 model_name: Linear
-dataset_name: Alpha360
+dataset_name: Alpha158
 stock_pool: csi300
 step: 60
 
 # 滚动类型配置
+# rolling_type: custom
 # rolling_type: sliding
 rolling_type: expanding
 
@@ -31,7 +32,7 @@ predict_dates:
 
 # 模型过滤器配置 (支持正则表达式)
 model_filter:
-  - Alpha158.*csi300.*(sliding|expanding)
+  - .*
 
 # 推荐过滤器配置
 rec_filter:

@@ -1,3 +1,4 @@
+import copy
 from loguru import logger
 import sys
 import qlib
@@ -18,6 +19,8 @@ import gc
 import multiprocessing
 from tqdm import tqdm
 from functools import partialmethod
+from utils import generate_qlib_segments
+
 tqdm.__init__ = partialmethod(tqdm.__init__, disable=True)
 
 from qlib.workflow.task.gen import handler_mod as default_handler_mod
@@ -135,6 +138,8 @@ class TrainCLI:
         stock_pool =  task["dataset"]['kwargs']['handler']['kwargs']['instruments']
         step = self.step
         rolling_type = self.kwargs["rolling_type"]
+        if rolling_type == "custom":
+            step = "0"
 
         exp_name = f"{pfx_name}_{model_class}_{data_set}_{stock_pool}_{rolling_type}_step{step}_{sfx_name}_{time_str}"
         print(f"Experiment name: {exp_name}")
@@ -176,3 +181,13 @@ class TrainCLI:
 
             run_train_blocking(task, exp_name)
             gc.collect()
+
+    def start_custom(self):
+        self.kwargs["rolling_type"] = "custom"
+        tasks = []
+        for i in range(1, 6):
+            segments = generate_qlib_segments(months_total=12 * i)
+            _task = copy.deepcopy(self.task_config)
+            _task["dataset"]["kwargs"]["segments"] = segments
+            tasks.append(_task)
+        self.task_training(tasks)
