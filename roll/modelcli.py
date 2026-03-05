@@ -256,8 +256,8 @@ class ModelCLI:
             append_to_file(md_file, f"Experiment: {exp.name} {exp.id} (Recorders: {len(mc.rid)}/{len(exp.list_recorders())})\n")
             for rid in mc.rid:
                 info = self.print_rec(exp.get_recorder(recorder_id=rid))
-                append_to_file(md_file, f"\tRecorder: {rid}\n")
-                append_to_file(md_file, f"\t\tModel: {info}\n")
+                append_to_file(md_file, f"\n\tRecorder: {rid}\n")
+                append_to_file(md_file, f"\n\t\tModel: {info}\n")
 
     def _save_results(self, df_final, func_name, stock_list, latest_stock_list):
         base_dir = Path(self.kwargs['analysis_folder']).expanduser()
