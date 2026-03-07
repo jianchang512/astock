@@ -54,7 +54,7 @@ jobs:
         run: |
           echo "开始 train "
           # cd ./roll && python ./roll.py --pfx_name="EXP" --model_name="LightGBM" --dataset_name="Alpha158" --stock_pool="csi300" --rolling_type="custom" train start_custom
-          python ../script/run.py
+          cd ./roll && python ../script/run.py
 
       - name: LS model
         run: |
