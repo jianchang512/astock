@@ -86,17 +86,23 @@ jobs:
           # 4. 推送到当前分支
           git push
 
+      # 1. 新增：获取当前日期并存入环境变量
+      - name: Get current date
+        run: echo "CURRENT_DATE=$(date +'%Y-%m-%d')" >> $GITHUB_ENV
+
+      # ... 这里是你之前的训练和压缩步骤 ...
+
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
-          # 使用日期作为 Tag 名称，例如 2026-03-07
-          tag_name: model-release-${{ github.event.schedule || 'manual' }}-${{ github.run_id }}
-          name: Model Release $(date +'%Y-%m-%d')
+          # 2. 修改：使用 ${{ env.CURRENT_DATE }} 引用变量
+          tag_name: model-release-${{ github.event.schedule || 'manual' }}-${{ env.CURRENT_DATE }}-${{ github.run_id }}
+          name: Model Release ${{ env.CURRENT_DATE }}
           body: |
             自动训练模型发布
-            - 训练日期: $(date +'%Y-%m-%d')
+            - 训练日期: ${{ env.CURRENT_DATE }}
             - 任务 ID: ${{ github.run_id }}
-          # 指定你的压缩包路径，支持通配符
+          # 指定你的压缩包路径
           files: |
             model_pkl/*.tar.gz
         env:
