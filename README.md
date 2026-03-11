@@ -108,3 +108,10 @@ python ./roll.py model selection
 
 <img width="300" alt="tg_group" src="https://github.com/user-attachments/assets/29877aa5-54f2-4cc0-9dd2-9adcaeb1105f" />
 
+
+
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/image?repos=touhoufan2024/qlibAssistant&type=timeline&legend=top-left)](https://www.star-history.com/?repos=touhoufan2024%2FqlibAssistant&type=timeline&legend=top-left)
+
