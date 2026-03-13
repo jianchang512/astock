@@ -51,6 +51,16 @@ jobs:
             echo "⚠️ 警告: 未找到 requirements.txt，跳过安装。"
           fi
 
+      - name: 3. Decompress with absolute paths
+        run: |
+          echo ">>> 解压模型pkl..."
+          cd ./roll && python ./roll.py model decompress_mlruns
+
+      - name: 4. Verify decompressed files
+        run: |
+          echo ">>> 验证 ~ 目录下的内容:"
+          ls -R ~/.qlibAssistant || echo "目录尚未创建"
+
       - name: 5. Run analysis
         run: |
             echo ">>> 运行分析脚本..."
