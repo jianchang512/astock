@@ -51,6 +51,8 @@ class ModelCLI:
         self._init_qlib(region)
         self.review_result_string = "# 复盘统计分析\n"
         self.review_result_string += f"\n 统计时间 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        self.review_result_df = {}
+        self.review_result_df_filter = {}
 
     def _init_qlib(self, region):
         """初始化 Qlib 配置"""
@@ -450,7 +452,7 @@ class ModelCLI:
         print(pct_df.to_markdown(index=True))
 
         self.review_result_string += pct_df.to_markdown(index=True) + "\n"
-        return pct_df
+        return df
 
     def _review_subdir(self, subdir):
         print(f"- {subdir.name}")
@@ -540,11 +542,21 @@ class ModelCLI:
 
         print("分析 df_ret:")
         self.review_result_string += f"### {date_str}_ret.csv\n"
-        self._review_csv(df_ret, real_df, next1_date_original_data, next2_date_original_data)
+        df = self._review_csv(df_ret, real_df, next1_date_original_data, next2_date_original_data)
+        self.review_result_df[subdir.name] = df
 
         print("分析 df_filter_ret:")
         self.review_result_string += f"### {date_str}_filter_ret.csv\n"
-        self._review_csv(df_filter_ret, real_df, next1_date_original_data, next2_date_original_data)
+        df = self._review_csv(df_filter_ret, real_df, next1_date_original_data, next2_date_original_data)
+        self.review_result_df_filter[subdir.name] = df
+
+    def save_review_result(self):
+        review_dir = Path("../review_csv")
+        review_dir.mkdir(parents=True, exist_ok=True)
+        for name, df in self.review_result_df.items():
+            df.to_csv(review_dir / f"{name}_ret.csv", index=True)
+        for name, df in self.review_result_df_filter.items():
+            df.to_csv(review_dir / f"{name}_filter_ret.csv", index=True)
 
     def review(self):
         """马后炮"""
@@ -573,3 +585,6 @@ class ModelCLI:
         print(self.review_result_string)
         append_to_file("/tmp/review_result.md", self.review_result_string, mmode='w')
         logger.info(f"review result saved to /tmp/review_result.md")
+
+        self.save_review_result()
+        logger.info(f"review result saved to ../review_csv")
