@@ -18,7 +18,7 @@ from functools import partialmethod
 from datetime import datetime
 from qlib.contrib.data.handler import Alpha158, Alpha360
 from dataclasses import dataclass, field
-from typing import List
+from typing import Dict, List
 
 from model_backup import (
     compress_mlruns as _compress_mlruns,
@@ -46,6 +46,13 @@ class ModelCLI:
         self._init_qlib(region)
         # 复盘逻辑拆分到独立助手类，降低本文件认知复杂度
         self.reviewer = ModelReviewHelper(self)
+        # 注意：dataclasses.field 只能用于 dataclass 字段，这里必须用普通 dict
+        self.rid_rank_icir: Dict[str, float] = {}
+        self.rid_weight: Dict[str, float] = {}
+
+    @staticmethod
+    def _round3(x: float) -> float:
+        return float(np.around(float(x), 3))
 
     def _init_qlib(self, region):
         """初始化 Qlib 配置"""
@@ -93,16 +100,26 @@ class ModelCLI:
             exp = R.get_exp(experiment_name=name)
             mc = ModelContext(name)
 
-            # 2. 遍历记录器
+            # 2. 遍历记录器（收集 rid + rank_icir）
             for rid in exp.list_recorders():
                 recorder = exp.get_recorder(recorder_id=rid)
                 if self._is_valid_recorder(recorder):
                     mc.rid.append(rid)
+                    _, ic_list = self.get_ic_info(recorder)
+                    self.rid_rank_icir[rid] = self._round3(ic_list[3])
 
             # 只有当这个实验下有符合条件的记录时才添加
             if mc.rid:
                 ret.append(mc)
-
+        # 通过 rank_icir 为 rid_weight 分配权重（归一化处理）
+        total_rank_icir = sum(self.rid_rank_icir[rid] for mc in ret for rid in mc.rid)
+        self.rid_weight = {}
+        for mc in ret:
+            for rid in mc.rid:
+                if total_rank_icir != 0:
+                    self.rid_weight[rid] = self._round3(self.rid_rank_icir[rid] / total_rank_icir)
+                else:
+                    self.rid_weight[rid] = self._round3(1.0 / (sum(len(mc.rid) for mc in ret) or 1))
         self._log_summary(ret)
         return ret
 
@@ -145,7 +162,9 @@ class ModelCLI:
             "dataset": task['dataset']['kwargs']['handler']['class'],
             "ic_info": ic_info,
             "data_train_vec": data_train_vec,
-            "train_time_vec": train_time_vec
+            "train_time_vec": train_time_vec,
+            "rank_icir": f"{self.rid_rank_icir[rec.id]:.3f}",
+            "weight": f"{self.rid_weight[rec.id]:.3f}",
         }
         print(info)
         return info
