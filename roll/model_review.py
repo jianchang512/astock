@@ -4,9 +4,10 @@ from typing import Dict
 
 import pandas as pd
 from loguru import logger
-
+from pprint import pprint
 from utils import append_to_file, TradeDate
 
+top_num_list = [10, 20, 30, 50, 80, 100]
 
 class ModelReviewHelper:
     """负责模型预测结果的回测复盘逻辑，拆分自 ModelCLI 降低单文件复杂度。"""
@@ -43,7 +44,6 @@ class ModelReviewHelper:
         df = df.merge(n1_renamed, on="instrument", how="left")
         df = df.merge(n2_renamed, on="instrument", how="left")
 
-        top_num_list = [10, 20, 30, 50, 80, 100]
         profit_num_list = [0.01 * i for i in range(1, 11)]  # 0.01 ~ 0.10
 
         topk_result_dict = {}
@@ -214,13 +214,34 @@ class ModelReviewHelper:
         self.save_review_result()
         logger.info("review result saved to ../review_csv")
 
+        pprint(self.review_result_df)
+        pprint(self.review_result_df_filter)
+
     def backtest(self):
         sorted_subdirs = self._get_review_subdirs()
         if sorted_subdirs is None:
             return
         date_list = [self._extract_date_from_csv_name(sorted_subdirs[-1]), self._extract_date_from_csv_name(sorted_subdirs[0])]
         logger.info(f"backtest data list: {date_list}")
+        date_range_list = self.trade_date.get_date_range(date_list[0], date_list[1])
 
-        trade_date_list = get_trade_date(self.kwargs.get("provider_uri"))
-        idx_s = trade_date_list.index(date_list[0])
-        idx_e = trade_date_list.index(date_list[1])
+        real_df = self.cli.get_real_label(dates={"start": date_list[0], "end": date_list[1]})
+        real_df = real_df.reset_index()
+        real_df["datetime"] = pd.to_datetime(real_df["datetime"])
+        real_label_map = real_df.set_index(["datetime", "instrument"])["real_label"]
+        # 拿到 topk 的 实际 real_label 列表, 并计算出 每天的 平均收益 df_avg_profit
+        # 两个: ret 和 filter_ret
+        for subdir in sorted_subdirs:
+            date_str = self._extract_date_from_csv_name(subdir)
+            df_ret = pd.read_csv(subdir / f"{date_str}_ret.csv", parse_dates=["datetime"])
+            # 直接覆盖原列，保持 real_label 列位置不变，避免 merge 产生 _x/_y 列
+            df_ret["real_label"] = df_ret.set_index(["datetime", "instrument"]).index.map(real_label_map)
+
+            df_filter_ret = pd.read_csv(subdir / f"{date_str}_filter_ret.csv", parse_dates=["datetime"])
+            df_filter_ret["real_label"] = df_filter_ret.set_index(["datetime", "instrument"]).index.map(real_label_map)
+
+            self.review_result_df[date_str] = df_ret
+            self.review_result_df_filter[date_str] = df_filter_ret
+        
+
+        print(date_range_list)
