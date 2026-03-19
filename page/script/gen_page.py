@@ -128,9 +128,6 @@ def generate_pages() -> None:
 
 # pages 下各文件夹的显示名称（与 nav 一致）
 PAGES_TITLES: dict[str, str] = {
-    'about': '帮助',
-    'docs': '文档',
-    'essays': '随笔',
     'mahoupao': '马后炮',
 }
 
@@ -182,7 +179,7 @@ def generate_pages_auto() -> None:
 
         # GitHub Pages 部署时 route 含 base，需两种 key 以兼容 dev 与 prod
         pages_sidebar[f'{rel_path}/'] = sidebar_items
-        pages_sidebar[f'/qlibAssistant{rel_path}/'] = sidebar_items
+        pages_sidebar[f'/astock{rel_path}/'] = sidebar_items
 
     # 写入 sidebar-pages.generated.ts
     _write_sidebar_pages(pages_sidebar)
