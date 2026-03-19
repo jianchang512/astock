@@ -179,7 +179,7 @@ def generate_pages_auto() -> None:
 
         # GitHub Pages 部署时 route 含 base，需两种 key 以兼容 dev 与 prod
         pages_sidebar[f'{rel_path}/'] = sidebar_items
-        pages_sidebar[f'/qlibAssistant{rel_path}/'] = sidebar_items
+        pages_sidebar[f'/astock{rel_path}/'] = sidebar_items
 
     # 写入 sidebar-pages.generated.ts
     _write_sidebar_pages(pages_sidebar)
