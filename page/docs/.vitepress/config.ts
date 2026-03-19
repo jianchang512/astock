@@ -10,7 +10,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-       { text: 'test', link: '/mahoupao' },
+       { text: 'test', link: '/pages/mahoupao' },
     ],
     sidebar: {
       ...pagesSidebar,
