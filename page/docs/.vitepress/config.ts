@@ -2,21 +2,15 @@ import { defineConfig } from 'vitepress'
 import { pagesSidebar } from './sidebar-pages.generated'
 
 export default defineConfig({
-  base: '/qlibAssistant/',
+  base: '/astock/',
   metaChunk: true,
   title: 'qlib csi300 score',
   description: 'qlib 量化选股评分数据展示',
   lang: 'zh-CN',
   themeConfig: {
-    socialLinks: [
-      { icon: 'github', link: 'https://github.com/touhoufan2024/qlibAssistant' },
-    ],
     nav: [
       { text: '首页', link: '/' },
-      { text: '文档', link: '/pages/docs/' },
-      { text: '随笔', link: '/pages/essays/' },
-      { text: '马后炮', link: '/pages/mahoupao/' },
-      { text: '帮助', link: '/pages/about/' },
+      { text: 'TEST', link: '/pages/mahoupao/' },
     ],
     sidebar: {
       ...pagesSidebar,
