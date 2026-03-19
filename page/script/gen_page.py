@@ -128,10 +128,9 @@ def generate_pages() -> None:
 
 # pages 下各文件夹的显示名称（与 nav 一致）
 PAGES_TITLES: dict[str, str] = {
-    'about': '帮助',
     'docs': '文档',
     'essays': '随笔',
-    'mahoupao': '马后炮',
+    'mahoupao': 'test',
 }
 
 
