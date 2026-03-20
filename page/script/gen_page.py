@@ -24,7 +24,7 @@ def csv_to_markdown_table(csv_path: Path) -> str:
         return ''
     lines = []
     # 表头
-    rows[0][0]=='':
+    rows[0][0]=''
     rows[0][1]='股票代码'
     rows[0][2]='预测明天收益率'
     rows[0][3]='看涨概率'
