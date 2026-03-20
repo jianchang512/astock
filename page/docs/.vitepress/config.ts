@@ -10,7 +10,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-       { text: 'test', link: '/pages/mahoupao' },
+       { text: '回测', link: '/pages/mahoupao' },
     ],
     sidebar: {
       ...pagesSidebar,
@@ -65,9 +65,5 @@ export default defineConfig({
     },
   },
   markdown: {
-    theme: {
-      light: 'github-light',
-      dark: 'github-dark',
-    },
   },
 })

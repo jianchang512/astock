@@ -1,11 +1,3 @@
-# 马后炮
-
-qlib 模型对 CSI300 的预测准确度究竟如何？欢迎点击左侧 [复盘统计分析](https://touhoufan2024.github.io/qlibAssistant/pages/mahoupao/review_result.html) 查看详细分析结果。
-
-我们会定期对历史预测表现进行汇总和评估，持续跟踪模型的实际准确性。
-
-如果需要更完整、详细的历史统计 CSV 文件（未直接展示于网页），可前往 [qlib_score 分支的 review_csv 文件夹](https://github.com/touhoufan2024/qlibAssistant/tree/qlib_score/review_csv) 获取原始数据，自行比对或核查。
-
 表格字段说明：
 
 | instrument | avg_score         | real_label        | n1close                  | n2high                        |

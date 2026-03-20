@@ -65,7 +65,7 @@ def generate_pages() -> None:
         print(f'[CI] 限制展示最近 {limit} 个子目录')
 
     # 根 index
-    index_lines = ['# qlib csi300 score\n', '点击下方或左侧查看打分预测。\n\n', '必看 [数据使用说明](https://touhoufan2024.github.io/qlibAssistant/pages/about/)\n\n', '必看 [复盘统计](https://touhoufan2024.github.io/qlibAssistant/pages/mahoupao/)\n\n']
+    index_lines = ['# qlib csi300 score\n', '点击下方或左侧查看打分预测。\n\n']
     if (DATA_DIR / 'index.md').exists():
         index_lines.append((DATA_DIR / 'index.md').read_text(encoding='utf-8', errors='ignore'))
     index_lines.append('\n## 子目录列表\n')
@@ -128,7 +128,7 @@ def generate_pages() -> None:
 
 # pages 下各文件夹的显示名称（与 nav 一致）
 PAGES_TITLES: dict[str, str] = {
-    'mahoupao': 'test',
+    'mahoupao': 'mahoupao',
 }
 
 
