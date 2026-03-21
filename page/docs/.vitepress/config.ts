@@ -10,7 +10,10 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-       { text: '回测', link: '/pages/mahoupao' },
+       { text: '操作方法', link: '/guide' },
+       { text: '预测数据解释', link: '/yuce' },
+       { text: '回测数据解释', link: '/huice' },
+       { text: '回测复盘分析', link: '/pages/mahoupao' },
     ],
     sidebar: {
       ...pagesSidebar,
