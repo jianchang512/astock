@@ -4,15 +4,15 @@ import { pagesSidebar } from './sidebar-pages.generated'
 export default defineConfig({
   base: '/astock/',
   metaChunk: true,
-  title: 'qlib csi300 score',
-  description: 'qlib 量化选股评分数据展示',
+  title: 'Qlib CSI300 沪深300',
+  description: 'qlib CSI300 沪深300量化选股评分数据展示',
   lang: 'zh-CN',
   themeConfig: {
     nav: [
       { text: '首页', link: '/' },
-       { text: '操作方法', link: '/guide' },
-       { text: '预测数据解释', link: '/yuce' },
-       { text: '回测数据解释', link: '/huice' },
+       { text: '操作方法', link: '/pages/guide' },
+       { text: '预测数据解释', link: '/pages/yuce' },
+       { text: '回测数据解释', link: '/pages/huice' },
        { text: '回测复盘分析', link: '/pages/mahoupao' },
     ],
     sidebar: {
