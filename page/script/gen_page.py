@@ -27,7 +27,7 @@ def csv_to_markdown_table(csv_path: Path) -> str:
         return ''
     lines = []
     # 表头
-    if csv_path.endswith('_ret.csv'):
+    if csv_path.name.endswith('_ret.csv'):
         rows[0][0]=''
         rows[0][1]='股票代码'
         rows[0][2]='预测涨幅'
