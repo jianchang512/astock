@@ -27,13 +27,14 @@ def csv_to_markdown_table(csv_path: Path) -> str:
         return ''
     lines = []
     # 表头
-    rows[0][0]=''
-    rows[0][1]='股票代码'
-    rows[0][2]='预测涨幅'
-    rows[0][3]='看涨概率'
-    rows[0][4]='用于复盘'
-    rows[0][5]='预测误差'
-    rows[0][6]='预测误差(绝对值)'
+    if csv_path.endswith('_ret.csv'):
+        rows[0][0]=''
+        rows[0][1]='股票代码'
+        rows[0][2]='预测涨幅'
+        rows[0][3]='看涨概率'
+        rows[0][4]='用于复盘'
+        rows[0][5]='预测误差'
+        rows[0][6]='预测误差(绝对值)'
     lines.append('| ' + ' | '.join(rows[0]) + ' |')
     lines.append('| ' + ' | '.join('---' for _ in rows[0]) + ' |')
     for row in rows[1:]:
