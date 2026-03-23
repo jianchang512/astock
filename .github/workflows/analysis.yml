@@ -9,6 +9,9 @@ on:
   # 保留手动触发按钮，方便调试
   workflow_dispatch:
 
+env:
+  DOLT_TOKEN: ${{ secrets.DOLT_TOKEN }}
+
 jobs:
   check-home-access:
     runs-on: ubuntu-latest
@@ -67,6 +70,18 @@ jobs:
         run: |
             echo ">>> 运行分析脚本..."
             cd ./roll && python ./roll.py model ls all=1 && python ./roll.py model selection
+
+      - name: push qlib score to dolt
+        run: |
+          # 1. 复制分析结果到 qlib_score_csv 目录（留一份文件给 sync_dolt 使用）
+          mkdir -p qlib_score_csv
+          cp -r /home/runner/.qlibAssistant/analysis/* qlib_score_csv/
+          
+          # 2. 执行 sync_dolt.py push_all（确保 python 可用、脚本有执行权限）
+          python ./script/sync_dolt.py push_all
+          
+          # 3. 删除 qlib_score_csv 下所有文件，避免遗留
+          rm -rf qlib_score_csv/*
 
       - name: 提交分析结果到 qlib_score 分支
         run: |
