@@ -10,6 +10,9 @@ on:
   # 保留手动触发按钮，方便调试
   workflow_dispatch:
 
+env:
+  DOLT_TOKEN: ${{ secrets.DOLT_TOKEN }}
+
 jobs:
   check-home-access:
     runs-on: ubuntu-latest
@@ -60,61 +63,55 @@ jobs:
 
       - name: 5. Review
         run: |
-            echo ">>> 运行分析脚本..."
-            cd ./roll && python ./roll.py model review
+          echo ">>> 运行分析脚本..."
+          cd ./roll && python ./roll.py model review
+          cd ..
 
-            # 将分析结果文件复制到指定目录，并提交
-            mkdir -p ../page/docs/pages/mahoupao
-            cp /tmp/review_result.md ../page/docs/pages/mahoupao/review_result.md
-
-            # 拉取最新代码防止冲突
-            git pull origin main || true
-
-            # 配置 Git 用户身份
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-            # 添加并提交变更，避免空提交出错
-            git add -f ../page/docs/pages/mahoupao/review_result.md
-            if git diff --cached --quiet; then
-              echo "review_result.md 没有变化，跳过提交。"
-            else
-              git commit -m "自动更新马后炮分析结果: $(date +'%Y-%m-%d %H:%M:%S')"
-              git push origin main
-            fi
-
-      - name: 将 review_csv 目录所有 csv 文件提交到 qlib_score 分支
+      - name: 回测分析与同步全部csv到dolt
         run: |
-          # 确保 review_csv 存在并切换到根目录（仓库根假定包含 review_csv 文件夹）
-          cd "$(git rev-parse --show-toplevel)"
+          echo ">>> 运行回测分析脚本..."
+          cd ./roll && python ./roll.py model backtest
+          cd ..
 
-          # 拉取 qlib_score 分支的最新内容
-          git fetch origin qlib_score
+          echo ">>> 调用脚本同步全部csv到 dolt..."
+          python ./script/sync_dolt.py push_all
 
-          # 检出并切换到本地 qlib_score 分支，若不存在则新建追踪远程分支
-          if git branch --list qlib_score; then
+      - name: 提交 review_csv 和 backtest_csv 到 qlib_score 分支
+        run: |
+          echo ">>> 暂存 review_csv 和 backtest_csv 到临时目录..."
+          mkdir -p /tmp/review_results
+          mkdir -p /tmp/backtest_results
+          cp -r review_csv/* /tmp/review_results/ 2>/dev/null || true
+          cp -r backtest_csv/* /tmp/backtest_results/ 2>/dev/null || true
+
+          echo ">>> 清空 review_csv 与 backtest_csv 中的 csv（避免分支上残留旧文件）..."
+          mkdir -p review_csv backtest_csv
+          find review_csv backtest_csv -type f -iname '*.csv' -delete 2>/dev/null || true
+
+          echo ">>> 切换到 qlib_score 分支..."
+          git fetch origin
+          if git show-ref --quiet refs/remotes/origin/qlib_score; then
             git checkout qlib_score
+            git pull origin qlib_score
           else
-            git checkout -b qlib_score origin/qlib_score
+            git checkout -b qlib_score
           fi
 
-          # 同步远端 qlib_score
-          git pull origin qlib_score || true
-
-          # 确保 review_csv 目录存在目标目录
+          echo ">>> 更新 review_csv 和 backtest_csv 文件夹..."
           mkdir -p review_csv
+          mkdir -p backtest_csv
+          cp -r /tmp/review_results/* review_csv/ 2>/dev/null || true
+          cp -r /tmp/backtest_results/* backtest_csv/ 2>/dev/null || true
 
-          # 添加所有 csv 文件
-          git add -f review_csv/*.csv
+          git add -f review_csv/
+          git add -f backtest_csv/
 
-          # 配置 Git 用户身份
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          # 如果确实有变更才提交
+          # 检查是否有文件变化，避免空提交报错
           if git diff --cached --quiet; then
-            echo "review_csv 下 csv 没有变化，跳过提交。"
+            echo "review_csv/backtest_csv 结果无变化，跳过推送。"
           else
-            git commit -m "自动同步 review_csv 到 qlib_score 分支: $(date +'%Y-%m-%d %H:%M:%S')"
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -m "自动同步回测和复盘csv: $(date +'%Y-%m-%d %H:%M:%S')"
             git push origin qlib_score
           fi
