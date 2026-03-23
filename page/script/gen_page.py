@@ -234,8 +234,7 @@ def filter_ret_df(self, df):
 # pages 下各文件夹的显示名称（与 nav 一致）
 PAGES_TITLES: dict[str, str] = {
     'mahoupao': '分析回测',
-    'yuce':"预测数据解释",
-    'huice':"回测数据解释",
+    'huice':"回测字段解释",
     'guide':"操作方法"
 }
 

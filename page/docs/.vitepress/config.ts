@@ -11,8 +11,7 @@ export default defineConfig({
     nav: [
       { text: '首页', link: '/' },
        { text: '操作方法', link: '/pages/guide' },
-       { text: '预测数据解释', link: '/pages/yuce' },
-       { text: '回测数据解释', link: '/pages/huice' },
+       { text: '数据表解释', link: '/pages/huice' },
        { text: '回测复盘分析', link: '/pages/mahoupao' },
     ],
     sidebar: {
