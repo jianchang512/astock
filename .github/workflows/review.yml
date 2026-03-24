@@ -67,12 +67,6 @@ jobs:
           cd ./roll && python ./roll.py model review
           cd ..
 
-      - name: 回测分析与同步全部csv到dolt
-        run: |
-          echo ">>> 运行回测分析脚本..."
-          cd ./roll && python ./roll.py model backtest
-          cd ..
-
 
       - name: 提交 review_csv 和 backtest_csv 到 qlib_score 分支
         run: |
