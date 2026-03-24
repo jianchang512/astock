@@ -73,8 +73,6 @@ jobs:
           cd ./roll && python ./roll.py model backtest
           cd ..
 
-          echo ">>> 调用脚本同步全部csv到 dolt..."
-          python ./script/sync_dolt.py push_all
 
       - name: 提交 review_csv 和 backtest_csv 到 qlib_score 分支
         run: |
