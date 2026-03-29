@@ -61,6 +61,33 @@ jobs:
           git checkout origin/qlib_score -- qlib_score_csv || mkdir -p qlib_score_csv
           git restore --staged qlib_score_csv 2>/dev/null || true
 
+      - name: 补充交易日历到最新日期
+        run: |
+          python - <<'EOF'
+          import akshare as ak
+          from pathlib import Path
+          from datetime import datetime
+
+          calendar_file = Path.home() / ".qlib/qlib_data/cn_data/calendars/day.txt"
+          try:
+              existing = set()
+              if calendar_file.exists():
+                  content = calendar_file.read_text(encoding="utf-8").strip()
+                  existing = set(line.strip() for line in content.split("\n") if line.strip())
+              trade_cal = ak.tool_trade_date_hist_sina()
+              today = datetime.now().date()
+              cutoff = datetime(2000, 1, 1).date()
+              all_dates = sorted([
+                  str(d) for d in trade_cal['trade_date'].tolist()
+                  if cutoff <= datetime.strptime(str(d), "%Y-%m-%d").date() <= today
+              ])
+              merged = sorted(existing | set(all_dates))
+              calendar_file.write_text("\n".join(merged) + "\n", encoding="utf-8")
+              print(f"✅ 日历更新完成，最新日期: {merged[-1]}，共 {len(merged)} 条")
+          except Exception as e:
+              print(f"⚠️ 日历更新失败，使用原始数据: {e}")
+          EOF
+
       - name: 5. Review
         run: |
           echo ">>> 运行分析脚本..."

@@ -336,7 +336,39 @@ class TradeDate:
         self.provider_uri = provider_uri
         self.trade_date_file = f"{self.provider_uri}/calendars/day.txt"
         _, stdout, _ = run_command(f"cat {self.trade_date_file}")
-        self.trade_date_list = stdout.split("\n")
+        self.trade_date_list = [d for d in stdout.split("\n") if d.strip()]
+        self._refresh_calendar_if_stale()
+
+    def _refresh_calendar_if_stale(self):
+        """如果本地日历落后今天超过5天，自动用akshare补充"""
+        try:
+            if not self.trade_date_list:
+                return
+            latest_local = self.trade_date_list[-1].strip()
+            today = datetime.now().date()
+            latest_dt = datetime.strptime(latest_local, "%Y-%m-%d").date()
+            if (today - latest_dt).days > 5:
+                logger.info(f"本地日历最新日期 {latest_local} 落后今天超过5天，尝试用akshare补充...")
+                trade_cal = ak.tool_trade_date_hist_sina()
+                cutoff = datetime(2000, 1, 1).date()
+                all_dates = sorted([
+                    str(d) for d in trade_cal['trade_date'].tolist()
+                    if cutoff <= datetime.strptime(str(d), "%Y-%m-%d").date() <= today
+                ])
+                existing_set = set(self.trade_date_list)
+                new_dates = [d for d in all_dates if d not in existing_set]
+                if new_dates:
+                    merged = sorted(existing_set | set(all_dates))
+                    self.trade_date_list = merged
+                    try:
+                        Path(self.trade_date_file).write_text(
+                            "\n".join(merged) + "\n", encoding="utf-8"
+                        )
+                        logger.info(f"日历补充完成，最新日期: {merged[-1]}，新增 {len(new_dates)} 条")
+                    except Exception as e:
+                        logger.warning(f"写回日历文件失败（仅内存更新）: {e}")
+        except Exception as e:
+            logger.warning(f"日历补充失败，使用本地数据: {e}")
 
     # 获取 start_date 和 end_date 之间的交易日列表
     def get_date_range(self, start_date, end_date):
