@@ -126,9 +126,18 @@ jobs:
           git add -f review_csv/
           git add -f backtest_csv/
 
+          # ★ 把 review_result.md 持久化到 qlib_score 分支
+          if [ -f /tmp/review_result.md ]; then
+            cp /tmp/review_result.md review_result.md
+            git add -f review_result.md
+            echo ">>> review_result.md 已暂存"
+          else
+            echo "⚠️ /tmp/review_result.md 不存在，跳过"
+          fi
+
           # 检查是否有文件变化，避免空提交报错
           if git diff --cached --quiet; then
-            echo "review_csv/backtest_csv 结果无变化，跳过推送。"
+            echo "review_csv/backtest_csv/review_result.md 结果无变化，跳过推送。"
           else
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"

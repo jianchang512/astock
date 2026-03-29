@@ -32,6 +32,12 @@ jobs:
           git checkout origin/qlib_score -- qlib_score_csv || mkdir -p qlib_score_csv
           git checkout origin/qlib_score -- backtest_csv || mkdir -p backtest_csv
 
+          # ★ 拉取最新 review_result.md 并覆盖页面静态文件
+          git checkout origin/qlib_score -- review_result.md 2>/dev/null && \
+            cp review_result.md page/docs/pages/mahoupao/review_result.md && \
+            echo ">>> review_result.md 已更新到页面" || \
+            echo "⚠️ qlib_score 分支暂无 review_result.md，保留现有文件"
+
       - name: 设置 Node.js
         uses: actions/setup-node@v4
         with:
