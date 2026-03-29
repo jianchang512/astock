@@ -341,7 +341,7 @@ class TradeDate:
         self._refresh_calendar_if_stale()
 
     def _refresh_calendar_if_stale(self):
-        """如果本地日历落后今天超过1天，自动用akshare补充（含节假日后的未来已知交易日）"""
+        """如果本地日历落后今天超过1天，自动用akshare补充已发生的交易日（仅 <= today，不引入未来交易日）"""
         try:
             if not self.trade_date_list:
                 return
@@ -352,10 +352,11 @@ class TradeDate:
                 logger.info(f"本地日历最新日期 {latest_local} 落后今天超过1天，尝试用akshare补充...")
                 trade_cal = ak.tool_trade_date_hist_sina()
                 cutoff = datetime(2000, 1, 1).date()
-                # 不限制 <= today，保留 akshare 中的未来已知交易日（复盘需要预测日期的下1、下2个交易日）
+                # 只补充 <= today 的已发生交易日，不引入未来交易日
+                # （未来日期在 qlib 行情数据中无对应记录，会导致 get_orignal_data 返回空 DataFrame）
                 all_dates = sorted([
                     str(d)[:10] for d in trade_cal['trade_date'].tolist()
-                    if cutoff <= datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+                    if cutoff <= datetime.strptime(str(d)[:10], "%Y-%m-%d").date() <= today
                 ])
                 existing_set = set(d.strip()[:10] for d in self.trade_date_list if len(d.strip()) >= 10)
                 new_dates = [d for d in all_dates if d not in existing_set]
