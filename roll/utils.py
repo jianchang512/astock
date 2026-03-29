@@ -340,21 +340,31 @@ class TradeDate:
 
     # 获取 start_date 和 end_date 之间的交易日列表
     def get_date_range(self, start_date, end_date):
-        idx_s = self.trade_date_list.index(start_date)
-        idx_e = self.trade_date_list.index(end_date)
-        return self.trade_date_list[idx_s : idx_e + 1]
+        try:
+            idx_s = self.trade_date_list.index(start_date)
+            idx_e = self.trade_date_list.index(end_date)
+            return self.trade_date_list[idx_s : idx_e + 1]
+        except ValueError:
+            logger.warning(f"get_date_range: 日期不在交易日历中 start={start_date}, end={end_date}")
+            return []
 
     # 获取所有交易日列表
     def get_trade_date_list(self):
         return self.trade_date_list
 
-    # 获取指定日期的索引
+    # 获取指定日期的索引，找不到时返回 None
     def get_date_index(self, date):
-        return self.trade_date_list.index(date)
+        try:
+            return self.trade_date_list.index(date)
+        except ValueError:
+            return None
 
     # 获取指定日期之后的第 idx 个交易日
     def get_next_date(self, date, idx):
         i = self.get_date_index(date)
+        if i is None:
+            logger.warning(f"get_next_date: 日期 {date} 不在交易日历中")
+            return None
         if i + idx >= len(self.trade_date_list):
             return self.trade_date_list[-1]
         return self.trade_date_list[i + idx]
