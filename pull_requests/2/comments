@@ -1,0 +1,86 @@
+## ⚠️ 重要修正：触发日历刷新的条件判断有误
+
+### 问题所在
+
+当前提案的 `_refresh_calendar_if_stale` 方法使用了这个判断：
+
+```python
+if (today - latest_dt).days > 5:
+```
+
+**这个阈值逻辑是错误的。**
+
+### 为什么错误——以 3.18（周五）为例
+
+3.18 是周五，复盘需要的是下1、下2个**交易日**：
+
+| 日期 | 星期 | 是交易日 |
+|------|------|---------|
+| 3.18 | 周五 | ✅ 预测日 |
+| 3.19 | 周六 | ❌ |
+| 3.20 | 周日 | ❌ |
+| 3.21 | 周一 | ✅ 下1个交易日 |
+| 3.24 | 周二 | ✅ 下2个交易日 |
+
+如果 `day.txt` 最新日期是 `2025-03-18`，今天是 `2025-03-19`（周六），天数差 = **1天**，不满足 `> 5` 的阈值，**不会触发刷新**。但 3.21、3.24 根本不在日历里，复盘永远不会通过。
+
+### 更极端：春节长假
+
+春节连休 7 天以上，节前最后一个交易日假设是 1.24，节后第一个交易日是 2.05。如果 `day.txt` 停在 1.24，今天是 1.30（假期中），天数差 = 6天，**依然不会触发**（需要 > 5，即 ≥ 6 才触发，这里恰好是边界）。
+
+而且即便触发了，今天仍在假期，`ak.tool_trade_date_hist_sina()` 返回的截止今天的交易日里也没有 2.05，依然不够用。
+
+### 正确做法
+
+**不要用天数阈值，改为：只要本地最新日期 < 今天，就无条件刷新。**
+
+```python
+def _refresh_calendar_if_stale(self):
+    """本地日历如落后于今天，自动用 akshare 补充到最新"""
+    from datetime import datetime
+    try:
+        if not self.trade_date_list:
+            return
+        latest_local = self.trade_date_list[-1].strip()
+        today = datetime.now().date()
+        latest_dt = datetime.strptime(latest_local, "%Y-%m-%d").date()
+
+        # 只要本地日历不是今天，就刷新（不用阈值）
+        if latest_dt < today:
+            logger.info(f"本地日历最新日期 {latest_local}，尝试用 akshare 补充到 {today}...")
+            import akshare as ak
+            trade_cal = ak.tool_trade_date_hist_sina()
+            all_dates = sorted([
+                str(d) for d in trade_cal['trade_date'].tolist()
+                if str(d) >= "2000-01-01"
+            ])
+            existing_set = set(d.strip() for d in self.trade_date_list if d.strip())
+            merged = sorted(existing_set | set(all_dates))
+            if len(merged) > len(existing_set):
+                self.trade_date_list = merged
+                try:
+                    from pathlib import Path
+                    Path(self.trade_date_file).write_text(
+                        "\n".join(self.trade_date_list) + "\n", encoding="utf-8"
+                    )
+                    logger.info(f"日历更新完成，最新日期: {self.trade_date_list[-1]}")
+                except Exception as e:
+                    logger.warning(f"写回日历文件失败（仅内存更新）: {e}")
+    except Exception as e:
+        logger.warning(f"日历补充失败，使用本地数据: {e}")
+```
+
+### 同样，workflow 里的补充步骤也需要去掉阈值判断
+
+`review.yml` 中新增的补充日历步骤不需要任何条件判断，每次 Review 运行时直接全量刷新即可。akshare 的 `tool_trade_date_hist_sina()` 返回完整历史，性能开销可忽略不计。
+
+### 额外注意：`all_dates` 不要截断到 `<= today`
+
+原提案用了：
+```python
+all_dates = sorted([str(d) for d in trade_cal['trade_date'].tolist() if str(d) >= "2000-01-01" and d <= today])
+```
+
+但实际上 `tool_trade_date_hist_sina()` 返回的是**已知的交易日历**，包含未来节假日安排。截断到 `<= today` 会丢失未来几天的交易日信息，而复盘恰恰需要预测日期的**下1、下2个交易日**（它们很可能是"今天之后"的日期）。
+
+**正确做法：不截断，保留完整日历（含未来日期）。**
