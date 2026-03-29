@@ -73,13 +73,14 @@ jobs:
               existing = set()
               if calendar_file.exists():
                   content = calendar_file.read_text(encoding="utf-8").strip()
-                  existing = set(line.strip() for line in content.split("\n") if line.strip())
+                  # 规范化：只取前 10 个字符，去除可能存在的时间戳（如 "2026-03-18 00:00:00" -> "2026-03-18"）
+                  existing = set(line.strip()[:10] for line in content.split("\n") if line.strip() and len(line.strip()) >= 10)
               trade_cal = ak.tool_trade_date_hist_sina()
-              today = datetime.now().date()
               cutoff = datetime(2000, 1, 1).date()
+              # 不限制 <= today，保留 akshare 中的未来已知交易日（复盘需要预测日期的下1、下2个交易日）
               all_dates = sorted([
-                  str(d) for d in trade_cal['trade_date'].tolist()
-                  if cutoff <= datetime.strptime(str(d), "%Y-%m-%d").date() <= today
+                  str(d)[:10] for d in trade_cal['trade_date'].tolist()
+                  if cutoff <= datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
               ])
               merged = sorted(existing | set(all_dates))
               calendar_file.write_text("\n".join(merged) + "\n", encoding="utf-8")

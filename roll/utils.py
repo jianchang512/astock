@@ -336,26 +336,28 @@ class TradeDate:
         self.provider_uri = provider_uri
         self.trade_date_file = f"{self.provider_uri}/calendars/day.txt"
         _, stdout, _ = run_command(f"cat {self.trade_date_file}")
-        self.trade_date_list = [d for d in stdout.split("\n") if d.strip()]
+        # 规范化：只取前 10 个字符，去除可能存在的时间戳（如 "2026-03-18 00:00:00" -> "2026-03-18"）
+        self.trade_date_list = [d.strip()[:10] for d in stdout.split("\n") if d.strip() and len(d.strip()) >= 10]
         self._refresh_calendar_if_stale()
 
     def _refresh_calendar_if_stale(self):
-        """如果本地日历落后今天超过5天，自动用akshare补充"""
+        """如果本地日历落后今天超过1天，自动用akshare补充（含节假日后的未来已知交易日）"""
         try:
             if not self.trade_date_list:
                 return
-            latest_local = self.trade_date_list[-1].strip()
+            latest_local = self.trade_date_list[-1].strip()[:10]
             today = datetime.now().date()
             latest_dt = datetime.strptime(latest_local, "%Y-%m-%d").date()
-            if (today - latest_dt).days > 5:
-                logger.info(f"本地日历最新日期 {latest_local} 落后今天超过5天，尝试用akshare补充...")
+            if (today - latest_dt).days > 1:
+                logger.info(f"本地日历最新日期 {latest_local} 落后今天超过1天，尝试用akshare补充...")
                 trade_cal = ak.tool_trade_date_hist_sina()
                 cutoff = datetime(2000, 1, 1).date()
+                # 不限制 <= today，保留 akshare 中的未来已知交易日（复盘需要预测日期的下1、下2个交易日）
                 all_dates = sorted([
-                    str(d) for d in trade_cal['trade_date'].tolist()
-                    if cutoff <= datetime.strptime(str(d), "%Y-%m-%d").date() <= today
+                    str(d)[:10] for d in trade_cal['trade_date'].tolist()
+                    if cutoff <= datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
                 ])
-                existing_set = set(self.trade_date_list)
+                existing_set = set(d.strip()[:10] for d in self.trade_date_list if len(d.strip()) >= 10)
                 new_dates = [d for d in all_dates if d not in existing_set]
                 if new_dates:
                     merged = sorted(existing_set | set(all_dates))
