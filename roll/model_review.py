@@ -161,6 +161,12 @@ class ModelReviewHelper:
             dates={"start": next2_date, "end": next2_date}
         )
 
+        # 行情数据为空时跳过（qlib 行情数据还未更新到该日期）
+        if next1_date_original_data.empty or next2_date_original_data.empty:
+            logger.info(f"还不能复盘 {date_str}（次日或第三日行情数据尚未就绪：next1={next1_date}, next2={next2_date}）")
+            self.review_result_string += f"还不能复盘 {date_str}（次日或第三日行情数据尚未就绪：next1={next1_date}, next2={next2_date}）\n"
+            return
+
         print("分析 df_ret:")
         self.review_result_string += f"### {date_str}_ret.csv\n"
         df = self._review_csv(df_ret, real_df, next1_date_original_data, next2_date_original_data)
