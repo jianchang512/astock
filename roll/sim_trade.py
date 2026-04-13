@@ -312,8 +312,7 @@ def main(
     init_qlib(provider_uri)
 
     trade_date = TradeDate(provider_uri)
-    score_dir  = Path(qlib_score_dir) if not Path(qlib_score_dir).is_absolute() \
-                 else Path(qlib_score_dir)
+    score_dir = Path(qlib_score_dir)
     # 若相对路径，以本文件所在目录为基准
     if not score_dir.is_absolute():
         score_dir = _ROLL_DIR / qlib_score_dir
