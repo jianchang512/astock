@@ -338,10 +338,12 @@ def select_trade_candidates(
         return ranked
 
     ranked["avg_score"] = pd.to_numeric(ranked["avg_score"], errors="coerce")
-    ranked["pos_ratio"] = pd.to_numeric(
-        ranked["pos_ratio"] if "pos_ratio" in ranked.columns else 0.5,
-        errors="coerce",
-    ).fillna(0.5)
+    pos_ratio = (
+        pd.to_numeric(ranked["pos_ratio"], errors="coerce")
+        if "pos_ratio" in ranked.columns
+        else pd.Series(0.5, index=ranked.index, dtype=float)
+    )
+    ranked["pos_ratio"] = pos_ratio.fillna(0.5)
     ranked = ranked.dropna(subset=["avg_score"])
     if ranked.empty:
         return ranked
@@ -362,7 +364,12 @@ def select_trade_candidates(
 
     if "STD20" in ranked.columns:
         ranked["STD20"] = pd.to_numeric(ranked["STD20"], errors="coerce").fillna(0.0)
-        std20_cap = min(STD20_CAP, float(ranked["STD20"].quantile(STD20_CAP_QUANTILE)))
+        std20_quantile = ranked["STD20"].quantile(STD20_CAP_QUANTILE)
+        std20_cap = (
+            STD20_CAP
+            if pd.isna(std20_quantile)
+            else min(STD20_CAP, float(std20_quantile))
+        )
         ranked = ranked[ranked["STD20"] <= std20_cap].copy()
     else:
         ranked["STD20"] = 0.0
@@ -406,7 +413,8 @@ def select_trade_candidates(
     confidence = MIN_CONFIDENCE + ranked["pos_ratio"] * CONFIDENCE_RANGE
     ranked["trade_score"] = ranked["avg_score"] * confidence / risk_penalty / chase_penalty
 
-    max_positions = max(1, math.ceil(top_n * rule["position_ratio"]))
+    max_positions = math.ceil(top_n * rule["position_ratio"])
+    max_positions = max(1, max_positions)
     ranked = ranked.sort_values(
         by=["trade_score", "avg_score", "pos_ratio"],
         ascending=False,
