@@ -1,4 +1,5 @@
 import importlib.util
+import inspect
 from pathlib import Path
 
 import pandas as pd
@@ -43,4 +44,4 @@ def test_select_trade_candidates_keeps_top_n_even_with_non_positive_scores():
 
 
 def test_main_top_n_default_is_3():
-    assert sim_trade_ci.main.__defaults__[2] == 3
+    assert inspect.signature(sim_trade_ci.main).parameters["top_n"].default == 3
