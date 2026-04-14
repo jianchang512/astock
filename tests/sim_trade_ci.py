@@ -5,11 +5,12 @@
 =================================================
 专为 GitHub Actions 设计，可独立运行，不修改仓库中任何已有代码。
 
-策略逻辑（与 roll/sim_trade.py 完全一致）：
+策略逻辑：
   每日 T 预测完成后，取 filter_ret.csv 中 avg_score 最高的前 N 只股票，
   于 T+1（下一个交易日）收盘价买入 SHARES_PER_STOCK 股，
-  于 T+2（再下一个交易日）收盘价全部卖出，
+  于 T+2（再下一个交易日）收盘价全部卖出（即卖出上个交易日买入的），
   计算每笔交易的盈亏并累计。
+  注意：始终买入预测分数最高的 N 只股票，不再过滤 avg_score > 0。
 
 费率说明（A股，2023 年后）：
   印花税 (stamp_tax)  : 0.05%，仅卖出方向收取
@@ -30,6 +31,7 @@
   卖出股票      当日卖出的股票列表（逗号分隔）
   卖出股票数    当日卖出的股票只数
   卖出总额      当日卖出总金额（扣印花税/佣金/过户费）
+  手续费        当日总手续费（含买卖佣金、过户费、印花税）
   毛利润        当日卖出毛利润（不含费用）
   净利润        当日卖出净利润（含所有费用）
   收益率%       当日净收益率
@@ -42,6 +44,7 @@
   价格          成交价格（复权）
   股数          成交股数
   金额          含费用后金额（买入为成本，卖出为到手）
+  手续费        该笔交易的手续费
   净利润        卖出时的净利润（买入行为空）
 
 用法：
@@ -306,14 +309,13 @@ def simulate_one_day(
         print(f"[{date_str}] filter_ret.csv 缺少必要列(avg_score/instrument)，跳过")
         return None
 
-    # 取 avg_score > 0 的前 top_n 只股票
+    # 取 avg_score 最高的前 top_n 只股票（始终买入固定数量）
     top_df = (
-        df[df["avg_score"] > 0]
-        .sort_values("avg_score", ascending=False)
+        df.sort_values("avg_score", ascending=False)
         .head(top_n)
     )
     if top_df.empty:
-        print(f"[{date_str}] avg_score > 0 的股票不足，跳过")
+        print(f"[{date_str}] 无可用股票，跳过")
         return None
 
     instruments = top_df["instrument"].tolist()
@@ -335,13 +337,19 @@ def simulate_one_day(
     total_buy = 0.0
     total_sell = 0.0
     total_gross = 0.0
+    total_fee = 0.0
     detail_rows: list[dict] = []
 
     for inst in valid_instruments:
         bp = buy_prices[inst]
         sp = sell_prices[inst]
+        buy_amount = bp * SHARES_PER_STOCK
+        sell_amount = sp * SHARES_PER_STOCK
         bc = buy_cost(bp, SHARES_PER_STOCK)
         sr = sell_revenue(sp, SHARES_PER_STOCK)
+        buy_fee = bc - buy_amount          # 买入手续费
+        sell_fee = sell_amount - sr         # 卖出手续费
+        fee = round(buy_fee + sell_fee, 2)  # 单只股票总手续费
         gross = (sp - bp) * SHARES_PER_STOCK
         net = sr - bc
         detail_rows.append({
@@ -351,12 +359,14 @@ def simulate_one_day(
             "shares":     SHARES_PER_STOCK,
             "buy_cost":   round(bc, 2),
             "sell_revenue": round(sr, 2),
+            "fee":        fee,
             "gross_profit": round(gross, 2),
             "net_profit":   round(net, 2),
         })
         total_buy += bc
         total_sell += sr
         total_gross += gross
+        total_fee += fee
 
     net_profit = total_sell - total_buy
     return_pct = net_profit / total_buy * 100 if total_buy else 0.0
@@ -369,6 +379,7 @@ def simulate_one_day(
         "stock_count":  len(valid_instruments),
         "buy_total":    round(total_buy, 2),
         "sell_total":   round(total_sell, 2),
+        "total_fee":    round(total_fee, 2),
         "gross_profit": round(total_gross, 2),
         "net_profit":   round(net_profit, 2),
         "return_pct":   round(return_pct, 4),
@@ -447,6 +458,7 @@ def main(
             "instruments": instruments,
             "sell_total": result["sell_total"],
             "buy_total_for_sold": result["buy_total"],
+            "total_fee": result["total_fee"],
             "gross_profit": result["gross_profit"],
             "net_profit": result["net_profit"],
             "details": result["_detail"],
@@ -472,6 +484,8 @@ def main(
             day_buy_total += b["buy_total"]
             # 明细：买入操作
             for d in b["details"]:
+                buy_amount = d["buy_price"] * d["shares"]
+                buy_fee = round(d["buy_cost"] - buy_amount, 2)
                 detail_rows.append({
                     "交易日期": date,
                     "股票代码": d["instrument"],
@@ -479,6 +493,7 @@ def main(
                     "价格": d["buy_price"],
                     "股数": d["shares"],
                     "金额": d["buy_cost"],
+                    "手续费": buy_fee,
                     "净利润": "",
                 })
 
@@ -488,14 +503,18 @@ def main(
         day_sell_buy_cost = 0.0
         day_gross_profit = 0.0
         day_net_profit = 0.0
+        day_total_fee = 0.0
         for s in sells:
             sell_instruments.extend(s["instruments"])
             day_sell_total += s["sell_total"]
             day_sell_buy_cost += s["buy_total_for_sold"]
             day_gross_profit += s["gross_profit"]
             day_net_profit += s["net_profit"]
+            day_total_fee += s["total_fee"]
             # 明细：卖出操作
             for d in s["details"]:
+                sell_amount = d["sell_price"] * d["shares"]
+                sell_fee = round(sell_amount - d["sell_revenue"], 2)
                 detail_rows.append({
                     "交易日期": date,
                     "股票代码": d["instrument"],
@@ -503,6 +522,7 @@ def main(
                     "价格": d["sell_price"],
                     "股数": d["shares"],
                     "金额": d["sell_revenue"],
+                    "手续费": sell_fee,
                     "净利润": d["net_profit"],
                 })
 
@@ -517,6 +537,7 @@ def main(
             "卖出股票": ",".join(sell_instruments) if sell_instruments else "",
             "卖出股票数": len(sell_instruments),
             "卖出总额": round(day_sell_total, 2),
+            "手续费": round(day_total_fee, 2),
             "毛利润": round(day_gross_profit, 2),
             "净利润": round(day_net_profit, 2),
             "收益率%": round(return_pct, 4),
@@ -540,7 +561,7 @@ def main(
     df_summary = pd.DataFrame(summary_rows, columns=[
         "交易日期", "买入股票", "买入股票数", "买入总额",
         "卖出股票", "卖出股票数", "卖出总额",
-        "毛利润", "净利润", "收益率%", "累计净利润",
+        "手续费", "毛利润", "净利润", "收益率%", "累计净利润",
     ])
     df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
     print(f"汇总结果已保存: {out_path}  ({len(df_summary)} 行)")
@@ -549,7 +570,7 @@ def main(
     det_path = Path(detail_out)
     det_path.parent.mkdir(parents=True, exist_ok=True)
     df_detail = pd.DataFrame(detail_rows, columns=[
-        "交易日期", "股票代码", "操作", "价格", "股数", "金额", "净利润",
+        "交易日期", "股票代码", "操作", "价格", "股数", "金额", "手续费", "净利润",
     ])
     df_detail.to_csv(det_path, index=False, encoding="utf-8-sig")
     print(f"明细结果已保存: {det_path}  ({len(df_detail)} 行)")
