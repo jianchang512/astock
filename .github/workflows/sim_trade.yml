@@ -1,0 +1,115 @@
+name: Sim Trade
+
+on:
+  # 手动触发
+  workflow_dispatch:
+
+  # 也可在 Review 完成后自动触发
+  workflow_run:
+    workflows: ["Review"]
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  sim-trade:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      # ── 1. 下载 qlib 行情数据 ──
+      - name: 下载最新 qlib_bin.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download --repo chenditc/investment_data --pattern "qlib_bin.tar.gz"
+          echo ">>> 正在解压数据..."
+          mkdir -p ~/.qlib/qlib_data/cn_data
+          tar -zxf qlib_bin.tar.gz -C ~/.qlib/qlib_data/cn_data --strip-components=1
+          echo ">>> 最新日历日期:"
+          tail -n1 ~/.qlib/qlib_data/cn_data/calendars/day.txt
+
+      # ── 2. 检出代码 ──
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      # ── 3. Python 环境 ──
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          else
+            echo "⚠️ 警告: 未找到 requirements.txt，跳过安装。"
+          fi
+
+      # ── 4. 从 qlib_score 分支拉取预测数据 ──
+      - name: 从 qlib_score 拉取数据
+        run: |
+          git fetch origin qlib_score
+          git checkout origin/qlib_score -- qlib_score_csv || mkdir -p qlib_score_csv
+          git restore --staged qlib_score_csv 2>/dev/null || true
+          echo ">>> qlib_score_csv 子目录数量:"
+          ls -d qlib_score_csv/selection_* 2>/dev/null | wc -l || echo "0"
+
+      # ── 5. 补充交易日历 ──
+      - name: 补充交易日历到最新日期
+        run: |
+          python - <<'EOF'
+          import akshare as ak
+          from pathlib import Path
+          from datetime import datetime
+
+          calendar_file = Path.home() / ".qlib/qlib_data/cn_data/calendars/day.txt"
+          try:
+              existing = set()
+              if calendar_file.exists():
+                  content = calendar_file.read_text(encoding="utf-8").strip()
+                  existing = set(line.strip()[:10] for line in content.split("\n") if line.strip() and len(line.strip()) >= 10)
+              trade_cal = ak.tool_trade_date_hist_sina()
+              cutoff = datetime(2000, 1, 1).date()
+              all_dates = sorted([
+                  str(d)[:10] for d in trade_cal['trade_date'].tolist()
+                  if cutoff <= datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+              ])
+              merged = sorted(existing | set(all_dates))
+              calendar_file.write_text("\n".join(merged) + "\n", encoding="utf-8")
+              print(f"✅ 日历更新完成，最新日期: {merged[-1]}，共 {len(merged)} 条")
+          except Exception as e:
+              print(f"⚠️ 日历更新失败，使用原始数据: {e}")
+          EOF
+
+      # ── 6. 运行模拟交易 ──
+      - name: 运行模拟交易
+        run: |
+          python tests/sim_trade_ci.py \
+            --provider_uri=~/.qlib/qlib_data/cn_data \
+            --qlib_score_dir=./qlib_score_csv \
+            --out=./tests/sim_trade_result.csv \
+            --detail_out=./tests/sim_trade_detail.csv \
+            --top_n=10
+
+      # ── 7. 提交结果回 main 分支 ──
+      - name: 提交模拟交易结果
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add -f tests/sim_trade_result.csv tests/sim_trade_detail.csv 2>/dev/null || true
+
+          if git diff --cached --quiet; then
+            echo "模拟交易结果无变化，跳过推送。"
+          else
+            git commit -m "自动更新模拟交易结果: $(date +'%Y-%m-%d %H:%M:%S') [skip ci]"
+            git pull --rebase origin main
+            git push origin main
+          fi
