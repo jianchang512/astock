@@ -556,16 +556,18 @@ def main(
 
     # 打印统计摘要
     total_net = df_summary["净利润"].sum()
-    sell_days = (df_summary["卖出股票数"] > 0).sum()
+    sell_days = int((df_summary["卖出股票数"] > 0).sum())
     total_days = len(df_summary)
-    win_days = (df_summary["净利润"] > 0).sum()
+    win_days = int((df_summary["净利润"] > 0).sum())
+    win_pct = f"{win_days / sell_days * 100:.1f}%" if sell_days else "N/A"
+    avg_net = f"{total_net / sell_days:.2f}" if sell_days else "N/A"
     print(
         f"\n=== 模拟交易统计 ===\n"
         f"  交易天数:  {total_days}\n"
         f"  含卖出天数: {sell_days}\n"
-        f"  盈利天数:  {win_days} ({win_days / sell_days * 100:.1f}% of sell days)\n"
+        f"  盈利天数:  {win_days} ({win_pct} of sell days)\n"
         f"  累计净利润: {total_net:.2f}\n"
-        f"  平均日净利润: {total_net / sell_days:.2f}\n"
+        f"  平均日净利润: {avg_net}\n"
         f"==================="
     )
 
