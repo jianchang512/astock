@@ -293,7 +293,7 @@ def select_trade_candidates(
     if ranked.empty:
         return ranked
 
-    ranked = ranked.sort_values(by="avg_score", ascending=False, kind="mergesort")
+    ranked = ranked.sort_values(by="avg_score", ascending=False)
     return ranked.head(top_n)
 
 
