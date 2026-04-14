@@ -308,7 +308,7 @@ def extract_date_from_csv(subdir: Path) -> Optional[str]:
     return None
 
 
-def _get_selection_rule(hold_days: int) -> dict[str, float]:
+def get_selection_rule(hold_days: int) -> dict[str, float]:
     rule = SELECTION_RULES.get(hold_days)
     if rule is not None:
         return rule
@@ -331,7 +331,7 @@ def select_trade_candidates(
     if df.empty or top_n <= 0:
         return df.iloc[0:0].copy()
 
-    rule = _get_selection_rule(hold_days)
+    rule = get_selection_rule(hold_days)
     ranked = df.copy()
     ranked = ranked.dropna(subset=["instrument", "avg_score"]).copy()
     if ranked.empty:
@@ -368,7 +368,7 @@ def select_trade_candidates(
         std20_cap = (
             STD20_CAP
             if pd.isna(std20_quantile)
-            else min(STD20_CAP, float(std20_quantile))
+            else min(STD20_CAP, std20_quantile)
         )
         ranked = ranked[ranked["STD20"] <= std20_cap].copy()
     else:
@@ -413,8 +413,7 @@ def select_trade_candidates(
     confidence = MIN_CONFIDENCE + ranked["pos_ratio"] * CONFIDENCE_RANGE
     ranked["trade_score"] = ranked["avg_score"] * confidence / risk_penalty / chase_penalty
 
-    max_positions = math.ceil(top_n * rule["position_ratio"])
-    max_positions = max(1, max_positions)
+    max_positions = max(1, math.ceil(top_n * rule["position_ratio"]))
     ranked = ranked.sort_values(
         by=["trade_score", "avg_score", "pos_ratio"],
         ascending=False,
@@ -428,7 +427,7 @@ def select_trade_candidates(
     missing = max_positions - len(selected)
     if missing > 0:
         selected = pd.concat(
-            [selected, ranked[~ranked.index.isin(selected.index)].head(missing)]
+            [selected, ranked.drop(selected.index, errors="ignore").head(missing)]
         )
     return selected.head(max_positions)
 
