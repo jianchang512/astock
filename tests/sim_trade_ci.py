@@ -105,23 +105,23 @@ class TradeDateCI:
         return dates
 
     def _refresh_calendar_if_stale(self):
-        """如果本地日历落后今天超过1天，用 akshare 补充"""
+        """如果本地日历落后最新已知交易日，用 akshare 补充"""
         try:
             if not self.trade_date_list:
                 return
             latest_local = self.trade_date_list[-1]
-            today = datetime.now().date()
-            latest_dt = datetime.strptime(latest_local, "%Y-%m-%d").date()
-            if (today - latest_dt).days <= 1:
-                return
-            print(f"本地日历最新日期 {latest_local} 落后今天，尝试用 akshare 补充...")
             import akshare as ak
             trade_cal = ak.tool_trade_date_hist_sina()
             cutoff = datetime(2000, 1, 1).date()
+            today = datetime.now().date()
             all_dates = sorted([
                 str(d)[:10] for d in trade_cal["trade_date"].tolist()
                 if cutoff <= datetime.strptime(str(d)[:10], "%Y-%m-%d").date() <= today
             ])
+            # 只在本地日历确实缺少已发生的交易日时才补充
+            if not all_dates or latest_local >= all_dates[-1]:
+                return
+            print(f"本地日历最新日期 {latest_local} 落后最新交易日 {all_dates[-1]}，补充中...")
             existing_set = set(self.trade_date_list)
             new_dates = [d for d in all_dates if d not in existing_set]
             if new_dates:
@@ -152,7 +152,7 @@ class TradeDateCI:
             return None
         target = idx + offset
         if target >= len(self.trade_date_list):
-            return self.trade_date_list[-1]
+            return None
         return self.trade_date_list[target]
 
 
