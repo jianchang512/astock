@@ -6,8 +6,10 @@
 策略逻辑：
   每日 T 预测完成后，取 filter_ret.csv 中 avg_score 最高的前 N 只股票，
   于 T+1（下一个交易日）收盘价买入 SHARES_PER_STOCK 股，
-  于 T+2（再下一个交易日）收盘价全部卖出（即卖出上个交易日买入的），
-  计算每笔交易的盈亏并累计。
+  按 3 种持仓模式分别计算盈亏并输出独立 CSV：
+    1. T日买T+1日卖：T+1 买入，T+2 卖出（持仓 1 个交易日）
+    2. T日买T+3日卖：T+1 买入，T+4 卖出（持仓 3 个交易日）
+    3. T日买T+5日卖：T+1 买入，T+6 卖出（持仓 5 个交易日）
   注意：始终买入预测分数最高的 N 只股票，不再过滤 avg_score > 0。
 
 费率说明（A股，2023 年后）：
@@ -188,10 +190,15 @@ def simulate_one_day(
     subdir: Path,
     trade_date: TradeDate,
     top_n: int,
+    hold_days: int = 1,
 ) -> Optional[dict]:
     """
     处理一个 selection 子目录，返回当日模拟交易结果字典，
     无法处理时返回 None。
+
+    参数：
+      hold_days  持仓天数（T日买入后持有的交易日数）
+                 1 = T日买T+1卖（默认），3 = T日买T+3卖，5 = T日买T+5卖
     """
     date_str = extract_date_from_csv(subdir)
     if not date_str:
@@ -203,13 +210,14 @@ def simulate_one_day(
         logger.info(f"[{date_str}] 不在交易日历中，跳过")
         return None
 
+    sell_offset = 1 + hold_days  # 从预测日算起的卖出偏移
     trade_list = trade_date.get_trade_date_list()
-    if idx + 2 >= len(trade_list):
-        logger.info(f"[{date_str}] T+1/T+2 尚未到来，跳过")
+    if idx + sell_offset >= len(trade_list):
+        logger.info(f"[{date_str}] T+1/T+{1 + hold_days} 尚未到来，跳过")
         return None
 
     buy_date  = trade_date.get_next_date(date_str, 1)
-    sell_date = trade_date.get_next_date(date_str, 2)
+    sell_date = trade_date.get_next_date(date_str, sell_offset)
 
     filter_csv = subdir / f"{date_str}_filter_ret.csv"
     if not filter_csv.exists():
@@ -321,8 +329,8 @@ def main(
     参数：
       config        配置文件路径（默认 config.yaml，与 roll.py 共用）
       top_n         每日买入股票数量（默认 10）
-      out           汇总结果 CSV 输出路径
-      detail_out    明细结果 CSV 输出路径（每只股票一行）
+      out           汇总结果 CSV 输出路径（T+1 模式基准名，T+3/T+5 自动加后缀）
+      detail_out    明细结果 CSV 输出路径（T+1 模式基准名，T+3/T+5 自动加后缀）
       qlib_score_dir qlib_score_csv 目录路径
     """
     cfg = load_config(config)
@@ -344,71 +352,87 @@ def main(
 
     logger.info(f"共发现 {len(subdirs)} 个预测目录，开始模拟交易（top_n={top_n}）...")
 
-    summary_rows = []
-    detail_rows  = []
-    cum_profit   = 0.0
+    # 3 种持仓模式：T日买T+1卖、T日买T+3卖、T日买T+5卖
+    hold_days_list = [1, 3, 5]
 
-    for subdir in subdirs:
-        result = simulate_one_day(subdir, trade_date, top_n)
-        if result is None:
+    out_base = Path(out) if Path(out).is_absolute() else _ROLL_DIR / out
+    det_base = Path(detail_out) if Path(detail_out).is_absolute() else _ROLL_DIR / detail_out
+
+    for hold_days in hold_days_list:
+        mode_label = f"T日买T+{hold_days}日卖"
+        logger.info(f"\n{'='*50}\n开始模拟交易模式: {mode_label}  (hold_days={hold_days})\n{'='*50}")
+
+        # 构造输出文件名：T+1 使用原始名，T+3/T+5 加后缀
+        if hold_days == 1:
+            out_path = out_base
+            det_path = det_base
+        else:
+            out_path = out_base.with_stem(f"{out_base.stem}_t{hold_days}")
+            det_path = det_base.with_stem(f"{det_base.stem}_t{hold_days}")
+
+        summary_rows = []
+        detail_rows  = []
+        cum_profit   = 0.0
+
+        for subdir in subdirs:
+            result = simulate_one_day(subdir, trade_date, top_n, hold_days=hold_days)
+            if result is None:
+                continue
+
+            cum_profit += result["net_profit"]
+            row = {k: v for k, v in result.items() if k != "_detail"}
+            row["cum_profit"] = round(cum_profit, 2)
+            summary_rows.append(row)
+            logger.info(
+                f"[{result['date_T']}] 净利润={result['net_profit']:.2f}  "
+                f"收益率={result['return_pct']:.4f}%  累计={cum_profit:.2f}"
+            )
+
+            # 明细行附加公共字段
+            for dr in result["_detail"]:
+                dr["date_T"]     = result["date_T"]
+                dr["date_buy"]   = result["date_buy"]
+                dr["date_sell"]  = result["date_sell"]
+                detail_rows.append(dr)
+
+        if not summary_rows:
+            logger.warning(f"[{mode_label}] 没有可输出的结果（数据不足或行情尚未就绪）。")
             continue
 
-        cum_profit += result["net_profit"]
-        row = {k: v for k, v in result.items() if k != "_detail"}
-        row["cum_profit"] = round(cum_profit, 2)
-        summary_rows.append(row)
+        # 输出汇总 CSV
+        df_summary = pd.DataFrame(summary_rows, columns=[
+            "date_T", "date_buy", "date_sell",
+            "instruments", "stock_count",
+            "buy_total", "sell_total", "total_fee",
+            "gross_profit", "net_profit",
+            "return_pct", "cum_profit",
+        ])
+        df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
+        logger.info(f"[{mode_label}] 汇总结果已保存: {out_path}  ({len(df_summary)} 行)")
+
+        # 输出明细 CSV
+        df_detail = pd.DataFrame(detail_rows, columns=[
+            "date_T", "date_buy", "date_sell",
+            "instrument", "shares",
+            "buy_price", "sell_price",
+            "buy_cost", "sell_revenue", "fee",
+            "gross_profit", "net_profit",
+        ])
+        df_detail.to_csv(det_path, index=False, encoding="utf-8-sig")
+        logger.info(f"[{mode_label}] 明细结果已保存: {det_path}  ({len(df_detail)} 行)")
+
+        # 打印统计摘要
+        total_net = df_summary["net_profit"].sum()
+        win_days  = (df_summary["net_profit"] > 0).sum()
+        total_days = len(df_summary)
         logger.info(
-            f"[{result['date_T']}] 净利润={result['net_profit']:.2f}  "
-            f"收益率={result['return_pct']:.4f}%  累计={cum_profit:.2f}"
+            f"\n=== 模拟交易统计 [{mode_label}] ===\n"
+            f"  交易天数:  {total_days}\n"
+            f"  盈利天数:  {win_days} ({win_days/total_days*100:.1f}%)\n"
+            f"  累计净利润: {total_net:.2f}\n"
+            f"  平均日净利润: {total_net/total_days:.2f}\n"
+            f"==================="
         )
-
-        # 明细行附加公共字段
-        for dr in result["_detail"]:
-            dr["date_T"]     = result["date_T"]
-            dr["date_buy"]   = result["date_buy"]
-            dr["date_sell"]  = result["date_sell"]
-            detail_rows.append(dr)
-
-    if not summary_rows:
-        logger.warning("没有可输出的结果（数据不足或行情尚未就绪）。")
-        return
-
-    # 输出汇总 CSV
-    out_path = Path(out) if Path(out).is_absolute() else _ROLL_DIR / out
-    df_summary = pd.DataFrame(summary_rows, columns=[
-        "date_T", "date_buy", "date_sell",
-        "instruments", "stock_count",
-        "buy_total", "sell_total", "total_fee",
-        "gross_profit", "net_profit",
-        "return_pct", "cum_profit",
-    ])
-    df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
-    logger.info(f"汇总结果已保存: {out_path}  ({len(df_summary)} 行)")
-
-    # 输出明细 CSV
-    det_path = Path(detail_out) if Path(detail_out).is_absolute() else _ROLL_DIR / detail_out
-    df_detail = pd.DataFrame(detail_rows, columns=[
-        "date_T", "date_buy", "date_sell",
-        "instrument", "shares",
-        "buy_price", "sell_price",
-        "buy_cost", "sell_revenue", "fee",
-        "gross_profit", "net_profit",
-    ])
-    df_detail.to_csv(det_path, index=False, encoding="utf-8-sig")
-    logger.info(f"明细结果已保存: {det_path}  ({len(df_detail)} 行)")
-
-    # 打印统计摘要
-    total_net = df_summary["net_profit"].sum()
-    win_days  = (df_summary["net_profit"] > 0).sum()
-    total_days = len(df_summary)
-    logger.info(
-        f"\n=== 模拟交易统计 ===\n"
-        f"  交易天数:  {total_days}\n"
-        f"  盈利天数:  {win_days} ({win_days/total_days*100:.1f}%)\n"
-        f"  累计净利润: {total_net:.2f}\n"
-        f"  平均日净利润: {total_net/total_days:.2f}\n"
-        f"==================="
-    )
 
 
 if __name__ == "__main__":
