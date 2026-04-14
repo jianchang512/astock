@@ -6,13 +6,13 @@
 专为 GitHub Actions 设计，可独立运行，不修改仓库中任何已有代码。
 
 策略逻辑：
-  每日 T 预测完成后，取 filter_ret.csv 中 avg_score 最高的前 N 只股票，
+  每日 T 预测完成后，优先挑选 filter_ret.csv 中高置信度、低风险的股票，
   于 T+1（下一个交易日）收盘价买入 SHARES_PER_STOCK 股，
   按 3 种持仓模式分别计算盈亏并输出独立 CSV：
     1. T日买T+1日卖：T+1 买入，T+2 卖出（持仓 1 个交易日）
     2. T日买T+3日卖：T+1 买入，T+4 卖出（持仓 3 个交易日）
     3. T日买T+5日卖：T+1 买入，T+6 卖出（持仓 5 个交易日）
-  注意：始终买入预测分数最高的 N 只股票，不再过滤 avg_score > 0。
+  注意：top_n 现在表示“最多买入多少只”，弱信号日期允许少买或空仓。
 
 费率说明（A股，2023 年后）：
   印花税 (stamp_tax)  : 0.05%，仅卖出方向收取
@@ -64,6 +64,7 @@ import os
 import re
 import sys
 import subprocess
+import math
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -79,6 +80,44 @@ COMMISSION_RATE  = 0.0003     # 佣金率 0.03%
 MIN_COMMISSION   = 5.0        # 单边最低佣金（元）
 STAMP_TAX_RATE   = 0.0005     # 印花税率 0.05%（仅卖出）
 TRANSFER_RATE    = 0.00001    # 过户费率 0.001%（沪市双向）
+
+# 持仓越久，要求越高，只买更强的信号。
+SELECTION_RULES = {
+    1: {
+        "min_avg_score": 0.0,
+        "min_pos_ratio": 0.55,
+        "score_quantile": 0.75,
+        "position_ratio": 1.0,
+    },
+    3: {
+        "min_avg_score": 0.01,
+        "min_pos_ratio": 0.70,
+        "score_quantile": 0.82,
+        "position_ratio": 0.6,
+    },
+    5: {
+        "min_avg_score": 0.02,
+        "min_pos_ratio": 0.80,
+        "score_quantile": 0.88,
+        "position_ratio": 0.4,
+    },
+}
+
+STD20_CAP = 0.03
+STD20_CAP_QUANTILE = 0.75
+ROC10_FILTER_CAP = 1.12
+ROC20_FILTER_CAP = 1.15
+# 风险惩罚：短期波动比中期波动更影响短持有交易，因此给予更高权重。
+STD20_PENALTY_WEIGHT = 8
+STD60_PENALTY_WEIGHT = 6
+# 追高惩罚：超过这些涨幅阈值后，逐步下调排序分数。
+ROC10_PENALTY_START = 1.08
+ROC20_PENALTY_START = 1.15
+ROC10_PENALTY_WEIGHT = 6
+ROC20_PENALTY_WEIGHT = 4
+# 一致性加权：只让 pos_ratio 温和影响排序，不让它完全盖过 avg_score。
+MIN_CONFIDENCE = 0.65
+CONFIDENCE_RANGE = 0.35
 
 
 # ──────────────────────────────────────────────
@@ -272,6 +311,131 @@ def extract_date_from_csv(subdir: Path) -> Optional[str]:
     return None
 
 
+def get_selection_rule(hold_days: int) -> dict[str, float]:
+    """按持仓天数返回选股规则，持仓越久越保守。"""
+    rule = SELECTION_RULES.get(hold_days)
+    if rule is not None:
+        return rule
+    if hold_days <= 1:
+        return SELECTION_RULES[1]
+    if hold_days <= 3:
+        return SELECTION_RULES[3]
+    return SELECTION_RULES[5]
+
+
+def select_trade_candidates(
+    df: pd.DataFrame,
+    top_n: int,
+    hold_days: int,
+) -> pd.DataFrame:
+    """
+    根据预测分数、正向一致率和风险因子挑选待买入股票。
+    `top_n` 为上限，弱信号日期可以少买或不买。
+    """
+    if df.empty or top_n <= 0:
+        return df.iloc[0:0].copy()
+
+    rule = get_selection_rule(hold_days)
+    ranked = df.copy()
+    ranked = ranked.dropna(subset=["instrument", "avg_score"]).copy()
+    if ranked.empty:
+        return ranked
+
+    ranked["avg_score"] = pd.to_numeric(ranked["avg_score"], errors="coerce")
+    pos_ratio = (
+        pd.to_numeric(ranked["pos_ratio"], errors="coerce")
+        if "pos_ratio" in ranked.columns
+        else pd.Series(0.5, index=ranked.index, dtype=float)
+    )
+    ranked["pos_ratio"] = pos_ratio.fillna(0.5)
+    ranked = ranked.dropna(subset=["avg_score"])
+    if ranked.empty:
+        return ranked
+
+    ranked = ranked[ranked["avg_score"] > 0].copy()
+    if ranked.empty:
+        return ranked
+
+    ranked = ranked[ranked["pos_ratio"] >= rule["min_pos_ratio"]].copy()
+    if ranked.empty:
+        return ranked
+
+    score_floor = max(
+        rule["min_avg_score"],
+        float(ranked["avg_score"].quantile(rule["score_quantile"])),
+    )
+    ranked["is_preferred"] = ranked["avg_score"] >= score_floor
+
+    if "STD20" in ranked.columns:
+        ranked["STD20"] = pd.to_numeric(ranked["STD20"], errors="coerce").fillna(0.0)
+        std20_quantile = ranked["STD20"].quantile(STD20_CAP_QUANTILE)
+        std20_cap = (
+            STD20_CAP
+            if pd.isna(std20_quantile)
+            else min(STD20_CAP, std20_quantile)
+        )
+        ranked = ranked[ranked["STD20"] <= std20_cap].copy()
+    else:
+        ranked["STD20"] = 0.0
+
+    if "STD60" in ranked.columns:
+        ranked["STD60"] = pd.to_numeric(ranked["STD60"], errors="coerce").fillna(0.0)
+    else:
+        ranked["STD60"] = 0.0
+
+    if "ROC10" in ranked.columns:
+        ranked["ROC10"] = pd.to_numeric(ranked["ROC10"], errors="coerce").fillna(1.0)
+        ranked = ranked[ranked["ROC10"] <= ROC10_FILTER_CAP].copy()
+    else:
+        ranked["ROC10"] = 1.0
+
+    if "ROC20" in ranked.columns:
+        ranked["ROC20"] = pd.to_numeric(ranked["ROC20"], errors="coerce").fillna(1.0)
+        ranked = ranked[ranked["ROC20"] <= ROC20_FILTER_CAP].copy()
+    else:
+        ranked["ROC20"] = 1.0
+
+    if ranked.empty:
+        return ranked
+
+    # 短期波动直接影响次日/短持有策略，因此给 STD20 更高权重。
+    # STD20_PENALTY_WEIGHT / STD60_PENALTY_WEIGHT 仅做温和惩罚，避免过度放大。
+    risk_penalty = (
+        1
+        + ranked["STD20"].clip(lower=0) * STD20_PENALTY_WEIGHT
+        + ranked["STD60"].clip(lower=0) * STD60_PENALTY_WEIGHT
+    )
+    chase_penalty = (
+        1
+        # ROC10 > ROC10_PENALTY_START、ROC20 > ROC20_PENALTY_START 说明短期涨幅已偏高。
+        # ROC10_PENALTY_WEIGHT / ROC20_PENALTY_WEIGHT 保持“抑制追涨”，但不至于完全抹掉高质量信号。
+        + (ranked["ROC10"] - ROC10_PENALTY_START).clip(lower=0) * ROC10_PENALTY_WEIGHT
+        + (ranked["ROC20"] - ROC20_PENALTY_START).clip(lower=0) * ROC20_PENALTY_WEIGHT
+    )
+    # pos_ratio 只做置信度加权，不完全主导排序。
+    # 最低 MIN_CONFIDENCE、最高 MIN_CONFIDENCE + CONFIDENCE_RANGE，避免单一指标把高分股完全挤掉。
+    confidence = MIN_CONFIDENCE + ranked["pos_ratio"] * CONFIDENCE_RANGE
+    ranked["trade_score"] = ranked["avg_score"] * confidence / risk_penalty / chase_penalty
+
+    max_positions = max(1, math.ceil(top_n * rule["position_ratio"]))
+    ranked = ranked.sort_values(
+        by=["trade_score", "avg_score", "pos_ratio"],
+        ascending=False,
+    )
+
+    preferred = ranked[ranked["is_preferred"]]
+    if len(preferred) >= max_positions:
+        return preferred.head(max_positions)
+
+    selected = preferred.copy()
+    missing = max_positions - len(selected)
+    if missing > 0:
+        selected = pd.concat(
+            [selected, ranked.drop(selected.index).head(missing)]
+        )
+    return selected.head(max_positions)
+
+
 # ──────────────────────────────────────────────
 # 核心：单日模拟交易
 # ──────────────────────────────────────────────
@@ -326,13 +490,10 @@ def simulate_one_day(
         print(f"[{date_str}] filter_ret.csv 缺少必要列(avg_score/instrument)，跳过")
         return None
 
-    # 取 avg_score 最高的前 top_n 只股票（始终买入固定数量）
-    top_df = (
-        df.sort_values("avg_score", ascending=False)
-        .head(top_n)
-    )
+    # 只买高置信度且风险更低的股票；top_n 作为上限
+    top_df = select_trade_candidates(df, top_n=top_n, hold_days=hold_days)
     if top_df.empty:
-        print(f"[{date_str}] 无可用股票，跳过")
+        print(f"[{date_str}] 无满足高置信度条件的股票，跳过")
         return None
 
     instruments = top_df["instrument"].tolist()
