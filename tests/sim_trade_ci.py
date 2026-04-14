@@ -107,12 +107,15 @@ STD20_CAP = 0.03
 STD20_CAP_QUANTILE = 0.75
 ROC10_FILTER_CAP = 1.12
 ROC20_FILTER_CAP = 1.15
+# 风险惩罚：短期波动比中期波动更影响短持有交易，因此给予更高权重。
 STD20_PENALTY_WEIGHT = 8
 STD60_PENALTY_WEIGHT = 6
+# 追高惩罚：超过这些涨幅阈值后，逐步下调排序分数。
 ROC10_PENALTY_START = 1.08
 ROC20_PENALTY_START = 1.15
 ROC10_PENALTY_WEIGHT = 6
 ROC20_PENALTY_WEIGHT = 4
+# 一致性加权：只让 pos_ratio 温和影响排序，不让它完全盖过 avg_score。
 MIN_CONFIDENCE = 0.65
 CONFIDENCE_RANGE = 0.35
 
@@ -309,6 +312,7 @@ def extract_date_from_csv(subdir: Path) -> Optional[str]:
 
 
 def get_selection_rule(hold_days: int) -> dict[str, float]:
+    """按持仓天数返回选股规则，持仓越久越保守。"""
     rule = SELECTION_RULES.get(hold_days)
     if rule is not None:
         return rule
@@ -427,7 +431,7 @@ def select_trade_candidates(
     missing = max_positions - len(selected)
     if missing > 0:
         selected = pd.concat(
-            [selected, ranked.drop(selected.index, errors="ignore").head(missing)]
+            [selected, ranked.drop(selected.index).head(missing)]
         )
     return selected.head(max_positions)
 
