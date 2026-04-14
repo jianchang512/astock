@@ -237,7 +237,8 @@ def get_close_prices(instruments: list[str], date: str) -> dict[str, float]:
 # ──────────────────────────────────────────────
 
 def get_score_subdirs(qlib_score_dir: Path) -> Optional[list[Path]]:
-    """扫描 qlib_score_csv 下的 selection_* 子目录，按日期升序排列"""
+    """扫描 qlib_score_csv 下的 selection_* 子目录，按日期升序排列。
+    同一日期如有多个目录，仅保留最新（目录名时间戳最大）的那个。"""
     if not qlib_score_dir.exists():
         print(f"⚠️ 目录不存在: {qlib_score_dir}")
         return None
@@ -249,7 +250,15 @@ def get_score_subdirs(qlib_score_dir: Path) -> Optional[list[Path]]:
         m = re.match(r"selection_(\d{8})_", subdir.name)
         return m.group(1) if m else ""
 
-    return sorted(subdirs, key=_extract_date)
+    # 按目录名排序（同日期的多个目录按时间戳升序），同日期保留最后一个（最新）
+    subdirs_sorted = sorted(subdirs, key=lambda d: d.name)
+    date_to_subdir: dict[str, Path] = {}
+    for d in subdirs_sorted:
+        date_key = _extract_date(d)
+        if date_key:
+            date_to_subdir[date_key] = d  # 同日期后出现的覆盖前者
+
+    return sorted(date_to_subdir.values(), key=_extract_date)
 
 
 def extract_date_from_csv(subdir: Path) -> Optional[str]:
