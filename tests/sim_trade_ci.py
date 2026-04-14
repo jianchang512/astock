@@ -16,6 +16,34 @@
   佣金   (commission) : 0.03%，买卖均收取，单边最低 5 元
   过户费 (transfer)   : 0.001%，买卖均收取（沪市双向）
 
+输出说明：
+  CSV 按实际交易日期组织，每行代表一个交易日的操作：
+  - 预测日（如 20260306）本身不产生任何买卖，不会出现在输出中
+  - 首个交易日（T+1）仅有买入，无卖出
+  - 后续交易日同时包含卖出（上一轮持仓）和买入（新一轮预测）
+
+汇总 CSV 字段：
+  交易日期      实际发生交易的日期
+  买入股票      当日买入的股票列表（逗号分隔）
+  买入股票数    当日买入的股票只数
+  买入总额      当日买入总金额（含佣金/过户费）
+  卖出股票      当日卖出的股票列表（逗号分隔）
+  卖出股票数    当日卖出的股票只数
+  卖出总额      当日卖出总金额（扣印花税/佣金/过户费）
+  毛利润        当日卖出毛利润（不含费用）
+  净利润        当日卖出净利润（含所有费用）
+  收益率%       当日净收益率
+  累计净利润    截至当日的累计净利润
+
+明细 CSV 字段：
+  交易日期      实际发生交易的日期
+  股票代码      股票代码
+  操作          买入 / 卖出
+  价格          成交价格（复权）
+  股数          成交股数
+  金额          含费用后金额（买入为成本，卖出为到手）
+  净利润        卖出时的净利润（买入行为空）
+
 用法：
   python tests/sim_trade_ci.py \\
       --provider_uri=~/.qlib/qlib_data/cn_data \\
@@ -31,6 +59,7 @@ import os
 import re
 import sys
 import subprocess
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -366,7 +395,7 @@ def main(
       qlib_score_dir  qlib_score_csv 目录路径（含 selection_* 子目录）
       top_n           每日买入股票数量（默认 10）
       out             汇总结果 CSV 输出路径
-      detail_out      明细结果 CSV 输出路径（每只股票一行）
+      detail_out      明细结果 CSV 输出路径（每只股票每笔操作一行）
     """
     provider_uri = str(Path(provider_uri).expanduser())
 
@@ -386,71 +415,159 @@ def main(
 
     print(f"共发现 {len(subdirs)} 个预测目录，开始模拟交易（top_n={top_n}）...")
 
+    # ── 第一步：收集所有预测周期的模拟结果 ──
+    all_results: list[dict] = []
+    for subdir in subdirs:
+        result = simulate_one_day(subdir, trade_date, top_n)
+        if result is not None:
+            all_results.append(result)
+
+    if not all_results:
+        print("没有可输出的结果（数据不足或行情尚未就绪）。")
+        return
+
+    # ── 第二步：按实际交易日期重组数据 ──
+    # 每个预测周期：T 日预测 → T+1 买入 → T+2 卖出
+    # 按交易日期聚合：每个日期上发生的所有买入和卖出操作
+    buy_on_date: dict[str, list[dict]] = defaultdict(list)
+    sell_on_date: dict[str, list[dict]] = defaultdict(list)
+
+    for result in all_results:
+        buy_date = result["date_buy"]
+        sell_date = result["date_sell"]
+        instruments = result["instruments"].split(",")
+
+        buy_on_date[buy_date].append({
+            "instruments": instruments,
+            "buy_total": result["buy_total"],
+            "details": result["_detail"],
+        })
+
+        sell_on_date[sell_date].append({
+            "instruments": instruments,
+            "sell_total": result["sell_total"],
+            "buy_total_for_sold": result["buy_total"],
+            "gross_profit": result["gross_profit"],
+            "net_profit": result["net_profit"],
+            "details": result["_detail"],
+        })
+
+    # 获取所有实际交易日期并排序
+    all_trade_dates = sorted(set(list(buy_on_date.keys()) + list(sell_on_date.keys())))
+
+    # ── 第三步：构建汇总 CSV（每行 = 一个交易日） ──
     summary_rows: list[dict] = []
     detail_rows: list[dict] = []
     cum_profit = 0.0
 
-    for subdir in subdirs:
-        result = simulate_one_day(subdir, trade_date, top_n)
-        if result is None:
-            continue
+    for date in all_trade_dates:
+        buys = buy_on_date.get(date, [])
+        sells = sell_on_date.get(date, [])
 
-        cum_profit += result["net_profit"]
-        row = {k: v for k, v in result.items() if k != "_detail"}
-        row["cum_profit"] = round(cum_profit, 2)
-        summary_rows.append(row)
+        # 聚合当日买入
+        buy_instruments: list[str] = []
+        day_buy_total = 0.0
+        for b in buys:
+            buy_instruments.extend(b["instruments"])
+            day_buy_total += b["buy_total"]
+            # 明细：买入操作
+            for d in b["details"]:
+                detail_rows.append({
+                    "交易日期": date,
+                    "股票代码": d["instrument"],
+                    "操作": "买入",
+                    "价格": d["buy_price"],
+                    "股数": d["shares"],
+                    "金额": d["buy_cost"],
+                    "净利润": "",
+                })
+
+        # 聚合当日卖出
+        sell_instruments: list[str] = []
+        day_sell_total = 0.0
+        day_sell_buy_cost = 0.0
+        day_gross_profit = 0.0
+        day_net_profit = 0.0
+        for s in sells:
+            sell_instruments.extend(s["instruments"])
+            day_sell_total += s["sell_total"]
+            day_sell_buy_cost += s["buy_total_for_sold"]
+            day_gross_profit += s["gross_profit"]
+            day_net_profit += s["net_profit"]
+            # 明细：卖出操作
+            for d in s["details"]:
+                detail_rows.append({
+                    "交易日期": date,
+                    "股票代码": d["instrument"],
+                    "操作": "卖出",
+                    "价格": d["sell_price"],
+                    "股数": d["shares"],
+                    "金额": d["sell_revenue"],
+                    "净利润": d["net_profit"],
+                })
+
+        cum_profit += day_net_profit
+        return_pct = day_net_profit / day_sell_buy_cost * 100 if day_sell_buy_cost else 0.0
+
+        summary_rows.append({
+            "交易日期": date,
+            "买入股票": ",".join(buy_instruments) if buy_instruments else "",
+            "买入股票数": len(buy_instruments),
+            "买入总额": round(day_buy_total, 2),
+            "卖出股票": ",".join(sell_instruments) if sell_instruments else "",
+            "卖出股票数": len(sell_instruments),
+            "卖出总额": round(day_sell_total, 2),
+            "毛利润": round(day_gross_profit, 2),
+            "净利润": round(day_net_profit, 2),
+            "收益率%": round(return_pct, 4),
+            "累计净利润": round(cum_profit, 2),
+        })
+
+        action_desc = []
+        if buy_instruments:
+            action_desc.append(f"买入{len(buy_instruments)}只")
+        if sell_instruments:
+            action_desc.append(f"卖出{len(sell_instruments)}只")
         print(
-            f"[{result['date_T']}] 净利润={result['net_profit']:.2f}  "
-            f"收益率={result['return_pct']:.4f}%  累计={cum_profit:.2f}"
+            f"[{date}] {'/'.join(action_desc)}  "
+            f"净利润={day_net_profit:.2f}  累计={cum_profit:.2f}"
         )
 
-        # 明细行附加公共字段
-        for dr in result["_detail"]:
-            dr["date_T"]   = result["date_T"]
-            dr["date_buy"] = result["date_buy"]
-            dr["date_sell"] = result["date_sell"]
-            detail_rows.append(dr)
-
-    if not summary_rows:
-        print("没有可输出的结果（数据不足或行情尚未就绪）。")
-        return
-
-    # 输出汇总 CSV
+    # ── 第四步：输出 CSV ──
+    # 汇总 CSV
     out_path = Path(out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df_summary = pd.DataFrame(summary_rows, columns=[
-        "date_T", "date_buy", "date_sell",
-        "instruments", "stock_count",
-        "buy_total", "sell_total",
-        "gross_profit", "net_profit",
-        "return_pct", "cum_profit",
+        "交易日期", "买入股票", "买入股票数", "买入总额",
+        "卖出股票", "卖出股票数", "卖出总额",
+        "毛利润", "净利润", "收益率%", "累计净利润",
     ])
     df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
     print(f"汇总结果已保存: {out_path}  ({len(df_summary)} 行)")
 
-    # 输出明细 CSV
+    # 明细 CSV
     det_path = Path(detail_out)
     det_path.parent.mkdir(parents=True, exist_ok=True)
     df_detail = pd.DataFrame(detail_rows, columns=[
-        "date_T", "date_buy", "date_sell",
-        "instrument", "shares",
-        "buy_price", "sell_price",
-        "buy_cost", "sell_revenue",
-        "gross_profit", "net_profit",
+        "交易日期", "股票代码", "操作", "价格", "股数", "金额", "净利润",
     ])
     df_detail.to_csv(det_path, index=False, encoding="utf-8-sig")
     print(f"明细结果已保存: {det_path}  ({len(df_detail)} 行)")
 
     # 打印统计摘要
-    total_net = df_summary["net_profit"].sum()
-    win_days = (df_summary["net_profit"] > 0).sum()
+    total_net = df_summary["净利润"].sum()
+    sell_days = int((df_summary["卖出股票数"] > 0).sum())
     total_days = len(df_summary)
+    win_days = int((df_summary["净利润"] > 0).sum())
+    win_pct = f"{win_days / sell_days * 100:.1f}%" if sell_days else "N/A"
+    avg_net = f"{total_net / sell_days:.2f}" if sell_days else "N/A"
     print(
         f"\n=== 模拟交易统计 ===\n"
         f"  交易天数:  {total_days}\n"
-        f"  盈利天数:  {win_days} ({win_days / total_days * 100:.1f}%)\n"
+        f"  含卖出天数: {sell_days}\n"
+        f"  盈利天数:  {win_days} ({win_pct} of sell days)\n"
         f"  累计净利润: {total_net:.2f}\n"
-        f"  平均日净利润: {total_net / total_days:.2f}\n"
+        f"  平均日净利润: {avg_net}\n"
         f"==================="
     )
 
