@@ -81,7 +81,7 @@ MIN_COMMISSION   = 5.0        # 单边最低佣金（元）
 STAMP_TAX_RATE   = 0.0005     # 印花税率 0.05%（仅卖出）
 TRANSFER_RATE    = 0.00001    # 过户费率 0.001%（沪市双向）
 
-# 持仓越久，要求越高，只买更强的信号
+# 持仓越久，要求越高，只买更强的信号。
 SELECTION_RULES = {
     1: {
         "min_avg_score": 0.0,
@@ -102,6 +102,19 @@ SELECTION_RULES = {
         "position_ratio": 0.4,
     },
 }
+
+STD20_CAP = 0.03
+STD20_CAP_QUANTILE = 0.75
+ROC10_FILTER_CAP = 1.12
+ROC20_FILTER_CAP = 1.15
+STD20_PENALTY_WEIGHT = 8
+STD60_PENALTY_WEIGHT = 6
+ROC10_PENALTY_START = 1.08
+ROC20_PENALTY_START = 1.15
+ROC10_PENALTY_WEIGHT = 6
+ROC20_PENALTY_WEIGHT = 4
+MIN_CONFIDENCE = 0.65
+CONFIDENCE_RANGE = 0.35
 
 
 # ──────────────────────────────────────────────
@@ -349,7 +362,7 @@ def select_trade_candidates(
 
     if "STD20" in ranked.columns:
         ranked["STD20"] = pd.to_numeric(ranked["STD20"], errors="coerce").fillna(0.0)
-        std20_cap = min(0.03, float(ranked["STD20"].quantile(0.75)))
+        std20_cap = min(STD20_CAP, float(ranked["STD20"].quantile(STD20_CAP_QUANTILE)))
         ranked = ranked[ranked["STD20"] <= std20_cap].copy()
     else:
         ranked["STD20"] = 0.0
@@ -361,30 +374,34 @@ def select_trade_candidates(
 
     if "ROC10" in ranked.columns:
         ranked["ROC10"] = pd.to_numeric(ranked["ROC10"], errors="coerce").fillna(1.0)
-        ranked = ranked[ranked["ROC10"] <= 1.12].copy()
+        ranked = ranked[ranked["ROC10"] <= ROC10_FILTER_CAP].copy()
     else:
         ranked["ROC10"] = 1.0
 
     if "ROC20" in ranked.columns:
         ranked["ROC20"] = pd.to_numeric(ranked["ROC20"], errors="coerce").fillna(1.0)
-        ranked = ranked[ranked["ROC20"] <= 1.15].copy()
+        ranked = ranked[ranked["ROC20"] <= ROC20_FILTER_CAP].copy()
     else:
         ranked["ROC20"] = 1.0
 
     if ranked.empty:
         return ranked
 
-    # 短期波动直接影响次日/短持有策略，因此给 STD20 更高权重；8/6 仅做温和惩罚，避免过度放大。
-    risk_penalty = 1 + ranked["STD20"].clip(lower=0) * 8 + ranked["STD60"].clip(lower=0) * 6
+    # 短期波动直接影响次日/短持有策略，因此给 STD20 更高权重。8/6 仅做温和惩罚，避免过度放大。
+    risk_penalty = (
+        1
+        + ranked["STD20"].clip(lower=0) * STD20_PENALTY_WEIGHT
+        + ranked["STD60"].clip(lower=0) * STD60_PENALTY_WEIGHT
+    )
     chase_penalty = (
         1
-        # ROC10 > 1.08、ROC20 > 1.15 说明短期涨幅已偏高，额外惩罚以减少追高买入；
-        # 6/4 的权重保持“抑制追涨”但不至于完全抹掉高质量信号。
-        + (ranked["ROC10"] - 1.08).clip(lower=0) * 6
-        + (ranked["ROC20"] - 1.15).clip(lower=0) * 4
+        # ROC10 > 1.08、ROC20 > 1.15 说明短期涨幅已偏高，额外惩罚以减少追高买入。
+        # 6/4 的权重保持“抑制追涨”，但不至于完全抹掉高质量信号。
+        + (ranked["ROC10"] - ROC10_PENALTY_START).clip(lower=0) * ROC10_PENALTY_WEIGHT
+        + (ranked["ROC20"] - ROC20_PENALTY_START).clip(lower=0) * ROC20_PENALTY_WEIGHT
     )
-    # pos_ratio 只做置信度加权，不完全主导排序：最低 0.65，最高 1.0，避免单一指标把高分股完全挤掉。
-    confidence = 0.65 + ranked["pos_ratio"] * 0.35
+    # pos_ratio 只做置信度加权，不完全主导排序。最低 0.65、最高 1.0，避免单一指标把高分股完全挤掉。
+    confidence = MIN_CONFIDENCE + ranked["pos_ratio"] * CONFIDENCE_RANGE
     ranked["trade_score"] = ranked["avg_score"] * confidence / risk_penalty / chase_penalty
 
     max_positions = max(1, math.ceil(top_n * rule["position_ratio"]))
