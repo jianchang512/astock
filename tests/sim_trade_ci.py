@@ -598,7 +598,7 @@ def _run_one_mode(
 def main(
     provider_uri: str = "~/.qlib/qlib_data/cn_data",
     qlib_score_dir: str = "./qlib_score_csv",
-    top_n: int = 10,
+    top_n: int = 3,
     out: str = "./tests/sim_trade_result.csv",
     detail_out: str = "./tests/sim_trade_detail.csv",
 ):
