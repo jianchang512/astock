@@ -8,8 +8,10 @@
 策略逻辑：
   每日 T 预测完成后，取 filter_ret.csv 中 avg_score 最高的前 N 只股票，
   于 T+1（下一个交易日）收盘价买入 SHARES_PER_STOCK 股，
-  于 T+2（再下一个交易日）收盘价全部卖出（即卖出上个交易日买入的），
-  计算每笔交易的盈亏并累计。
+  按 3 种持仓模式分别计算盈亏并输出独立 CSV：
+    1. T日买T+1日卖：T+1 买入，T+2 卖出（持仓 1 个交易日）
+    2. T日买T+3日卖：T+1 买入，T+4 卖出（持仓 3 个交易日）
+    3. T日买T+5日卖：T+1 买入，T+6 卖出（持仓 5 个交易日）
   注意：始终买入预测分数最高的 N 只股票，不再过滤 avg_score > 0。
 
 费率说明（A股，2023 年后）：
@@ -278,10 +280,15 @@ def simulate_one_day(
     subdir: Path,
     trade_date: TradeDateCI,
     top_n: int,
+    hold_days: int = 1,
 ) -> Optional[dict]:
     """
     处理一个 selection 子目录，返回当日模拟交易结果字典。
     无法处理时返回 None。
+
+    参数：
+      hold_days  持仓天数（T日买入后持有的交易日数）
+                 1 = T日买T+1卖（默认），3 = T日买T+3卖，5 = T日买T+5卖
     """
     date_str = extract_date_from_csv(subdir)
     if not date_str:
@@ -293,13 +300,14 @@ def simulate_one_day(
         print(f"[{date_str}] 不在交易日历中，跳过")
         return None
 
+    sell_offset = 1 + hold_days  # 从预测日算起的卖出偏移
     trade_list = trade_date.get_trade_date_list()
-    if idx + 2 >= len(trade_list):
-        print(f"[{date_str}] T+1/T+2 尚未到来，跳过")
+    if idx + sell_offset >= len(trade_list):
+        print(f"[{date_str}] T+1/T+{1 + hold_days} 尚未到来，跳过")
         return None
 
     buy_date = trade_date.get_next_date(date_str, 1)
-    sell_date = trade_date.get_next_date(date_str, 2)
+    sell_date = trade_date.get_next_date(date_str, sell_offset)
 
     # 读取 filter_ret.csv
     filter_csv = subdir / f"{date_str}_filter_ret.csv"
@@ -329,7 +337,7 @@ def simulate_one_day(
 
     instruments = top_df["instrument"].tolist()
 
-    # 获取 T+1（买入日）和 T+2（卖出日）收盘价
+    # 获取买入日（T+1）和卖出日收盘价
     buy_prices = get_close_prices(instruments, buy_date)
     sell_prices = get_close_prices(instruments, sell_date)
 
@@ -400,55 +408,42 @@ def simulate_one_day(
 # 主流程
 # ──────────────────────────────────────────────
 
-def main(
-    provider_uri: str = "~/.qlib/qlib_data/cn_data",
-    qlib_score_dir: str = "./qlib_score_csv",
-    top_n: int = 10,
-    out: str = "./tests/sim_trade_result.csv",
-    detail_out: str = "./tests/sim_trade_detail.csv",
+def _run_one_mode(
+    hold_days: int,
+    subdirs: list[Path],
+    trade_date: TradeDateCI,
+    top_n: int,
+    out_path: Path,
+    det_path: Path,
 ):
     """
-    模拟交易主入口。
+    运行单种持仓模式的模拟交易并输出 CSV。
 
     参数：
-      provider_uri    qlib 数据目录路径
-      qlib_score_dir  qlib_score_csv 目录路径（含 selection_* 子目录）
-      top_n           每日买入股票数量（默认 10）
-      out             汇总结果 CSV 输出路径
-      detail_out      明细结果 CSV 输出路径（每只股票每笔操作一行）
+      hold_days  持仓天数（1/3/5）
+      subdirs    预测目录列表
+      trade_date 交易日历对象
+      top_n      每日买入股票数量
+      out_path   汇总 CSV 输出路径
+      det_path   明细 CSV 输出路径
     """
-    provider_uri = str(Path(provider_uri).expanduser())
-
-    print(f"初始化 qlib... (provider_uri={provider_uri})")
-    init_qlib(provider_uri)
-
-    trade_date = TradeDateCI(provider_uri)
-
-    score_dir = Path(qlib_score_dir)
-    if not score_dir.is_absolute():
-        score_dir = Path.cwd() / qlib_score_dir
-
-    subdirs = get_score_subdirs(score_dir)
-    if not subdirs:
-        print("未找到任何 selection 子目录，退出。")
-        return
-
-    print(f"共发现 {len(subdirs)} 个预测目录，开始模拟交易（top_n={top_n}）...")
+    mode_label = f"T日买T+{hold_days}日卖"
+    print(f"\n{'='*50}")
+    print(f"开始模拟交易模式: {mode_label}  (hold_days={hold_days})")
+    print(f"{'='*50}")
 
     # ── 第一步：收集所有预测周期的模拟结果 ──
     all_results: list[dict] = []
     for subdir in subdirs:
-        result = simulate_one_day(subdir, trade_date, top_n)
+        result = simulate_one_day(subdir, trade_date, top_n, hold_days=hold_days)
         if result is not None:
             all_results.append(result)
 
     if not all_results:
-        print("没有可输出的结果（数据不足或行情尚未就绪）。")
+        print(f"[{mode_label}] 没有可输出的结果（数据不足或行情尚未就绪）。")
         return
 
     # ── 第二步：按实际交易日期重组数据 ──
-    # 每个预测周期：T 日预测 → T+1 买入 → T+2 卖出
-    # 按交易日期聚合：每个日期上发生的所有买入和卖出操作
     buy_on_date: dict[str, list[dict]] = defaultdict(list)
     sell_on_date: dict[str, list[dict]] = defaultdict(list)
 
@@ -565,7 +560,6 @@ def main(
 
     # ── 第四步：输出 CSV ──
     # 汇总 CSV
-    out_path = Path(out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df_summary = pd.DataFrame(summary_rows, columns=[
         "交易日期", "买入股票", "买入股票数", "买入总额",
@@ -573,16 +567,15 @@ def main(
         "手续费", "毛利润", "净利润", "收益率%", "累计净利润",
     ])
     df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
-    print(f"汇总结果已保存: {out_path}  ({len(df_summary)} 行)")
+    print(f"[{mode_label}] 汇总结果已保存: {out_path}  ({len(df_summary)} 行)")
 
     # 明细 CSV
-    det_path = Path(detail_out)
     det_path.parent.mkdir(parents=True, exist_ok=True)
     df_detail = pd.DataFrame(detail_rows, columns=[
         "交易日期", "股票代码", "操作", "价格", "股数", "金额", "手续费", "净利润",
     ])
     df_detail.to_csv(det_path, index=False, encoding="utf-8-sig")
-    print(f"明细结果已保存: {det_path}  ({len(df_detail)} 行)")
+    print(f"[{mode_label}] 明细结果已保存: {det_path}  ({len(df_detail)} 行)")
 
     # 打印统计摘要
     total_net = df_summary["净利润"].sum()
@@ -592,7 +585,7 @@ def main(
     win_pct = f"{win_days / sell_days * 100:.1f}%" if sell_days else "N/A"
     avg_net = f"{total_net / sell_days:.2f}" if sell_days else "N/A"
     print(
-        f"\n=== 模拟交易统计 ===\n"
+        f"\n=== 模拟交易统计 [{mode_label}] ===\n"
         f"  交易天数:  {total_days}\n"
         f"  含卖出天数: {sell_days}\n"
         f"  盈利天数:  {win_days} ({win_pct} of sell days)\n"
@@ -600,6 +593,69 @@ def main(
         f"  平均日净利润: {avg_net}\n"
         f"==================="
     )
+
+
+def main(
+    provider_uri: str = "~/.qlib/qlib_data/cn_data",
+    qlib_score_dir: str = "./qlib_score_csv",
+    top_n: int = 10,
+    out: str = "./tests/sim_trade_result.csv",
+    detail_out: str = "./tests/sim_trade_detail.csv",
+):
+    """
+    模拟交易主入口。支持 3 种持仓模式，分别输出 CSV：
+      - T日买T+1日卖（hold_days=1）
+      - T日买T+3日卖（hold_days=3）
+      - T日买T+5日卖（hold_days=5）
+
+    参数：
+      provider_uri    qlib 数据目录路径
+      qlib_score_dir  qlib_score_csv 目录路径（含 selection_* 子目录）
+      top_n           每日买入股票数量（默认 10）
+      out             汇总结果 CSV 输出路径（T+1 模式基准名，T+3/T+5 自动加后缀）
+      detail_out      明细结果 CSV 输出路径（T+1 模式基准名，T+3/T+5 自动加后缀）
+    """
+    provider_uri = str(Path(provider_uri).expanduser())
+
+    print(f"初始化 qlib... (provider_uri={provider_uri})")
+    init_qlib(provider_uri)
+
+    trade_date = TradeDateCI(provider_uri)
+
+    score_dir = Path(qlib_score_dir)
+    if not score_dir.is_absolute():
+        score_dir = Path.cwd() / qlib_score_dir
+
+    subdirs = get_score_subdirs(score_dir)
+    if not subdirs:
+        print("未找到任何 selection 子目录，退出。")
+        return
+
+    print(f"共发现 {len(subdirs)} 个预测目录，开始模拟交易（top_n={top_n}）...")
+
+    # 3 种持仓模式：T日买T+1卖、T日买T+3卖、T日买T+5卖
+    hold_days_list = [1, 3, 5]
+
+    out_base = Path(out)
+    det_base = Path(detail_out)
+
+    for hold_days in hold_days_list:
+        # 构造输出文件名：T+1 使用原始名，T+3/T+5 加后缀
+        if hold_days == 1:
+            out_path = out_base
+            det_path = det_base
+        else:
+            out_path = out_base.with_stem(f"{out_base.stem}_t{hold_days}")
+            det_path = det_base.with_stem(f"{det_base.stem}_t{hold_days}")
+
+        _run_one_mode(
+            hold_days=hold_days,
+            subdirs=subdirs,
+            trade_date=trade_date,
+            top_n=top_n,
+            out_path=out_path,
+            det_path=det_path,
+        )
 
 
 if __name__ == "__main__":
