@@ -337,7 +337,7 @@ def simulate_one_day(
 
     instruments = top_df["instrument"].tolist()
 
-    # 获取 T+1（买入日）和 T+2（卖出日）收盘价
+    # 获取买入日（T+1）和卖出日收盘价
     buy_prices = get_close_prices(instruments, buy_date)
     sell_prices = get_close_prices(instruments, sell_date)
 
