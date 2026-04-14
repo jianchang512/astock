@@ -374,17 +374,20 @@ def select_trade_candidates(
     if ranked.empty:
         return ranked
 
+    # 短期波动直接影响次日/短持有策略，因此给 STD20 更高权重；8/6 仅做温和惩罚，避免过度放大。
     risk_penalty = 1 + ranked["STD20"].clip(lower=0) * 8 + ranked["STD60"].clip(lower=0) * 6
     chase_penalty = (
         1
+        # ROC10 > 1.08、ROC20 > 1.15 说明短期涨幅已偏高，额外惩罚以减少追高买入；
+        # 6/4 的权重保持“抑制追涨”但不至于完全抹掉高质量信号。
         + (ranked["ROC10"] - 1.08).clip(lower=0) * 6
         + (ranked["ROC20"] - 1.15).clip(lower=0) * 4
     )
+    # pos_ratio 只做置信度加权，不完全主导排序：最低 0.65，最高 1.0，避免单一指标把高分股完全挤掉。
     confidence = 0.65 + ranked["pos_ratio"] * 0.35
     ranked["trade_score"] = ranked["avg_score"] * confidence / risk_penalty / chase_penalty
 
     max_positions = max(1, math.ceil(top_n * rule["position_ratio"]))
-    max_positions = min(top_n, max_positions)
     ranked = ranked.sort_values(
         by=["trade_score", "avg_score", "pos_ratio"],
         ascending=False,
