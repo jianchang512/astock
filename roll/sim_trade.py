@@ -6,8 +6,9 @@
 策略逻辑：
   每日 T 预测完成后，取 filter_ret.csv 中 avg_score 最高的前 N 只股票，
   于 T+1（下一个交易日）收盘价买入 SHARES_PER_STOCK 股，
-  于 T+2（再下一个交易日）收盘价全部卖出，
+  于 T+2（再下一个交易日）收盘价全部卖出（即卖出上个交易日买入的），
   计算每笔交易的盈亏并累计。
+  注意：始终买入预测分数最高的 N 只股票，不再过滤 avg_score > 0。
 
 费率说明（A股，2023 年后）：
   印花税 (stamp_tax)  : 0.05%，仅卖出方向收取
@@ -29,6 +30,7 @@
   instruments   买入股票列表（逗号分隔）
   buy_price_sum 买入总金额（调整价 × 股数，含佣金/过户费）
   sell_price_sum卖出总金额（调整价 × 股数，扣印花税/佣金/过户费）
+  total_fee     总手续费（含买卖佣金、过户费、印花税）
   gross_profit  毛利润（不含费用）
   net_profit    净利润（含所有费用）
   return_pct    净收益率 %
@@ -215,14 +217,13 @@ def simulate_one_day(
         logger.warning(f"[{date_str}] filter_ret.csv 缺少必要列，跳过")
         return None
 
-    # 取 avg_score > 0 的前 top_n 只股票（与复盘逻辑一致）
+    # 取 avg_score 最高的前 top_n 只股票（始终买入固定数量）
     top_df = (
-        df[df["avg_score"] > 0]
-        .sort_values("avg_score", ascending=False)
+        df.sort_values("avg_score", ascending=False)
         .head(top_n)
     )
     if top_df.empty:
-        logger.info(f"[{date_str}] avg_score > 0 的股票不足，跳过")
+        logger.info(f"[{date_str}] 无可用股票，跳过")
         return None
 
     instruments = top_df["instrument"].tolist()
@@ -245,13 +246,19 @@ def simulate_one_day(
     total_buy  = 0.0
     total_sell = 0.0
     total_gross = 0.0
+    total_fee  = 0.0
     detail_rows = []
 
     for inst in valid_instruments:
         bp = buy_prices[inst]
         sp = sell_prices[inst]
+        buy_amount = bp * SHARES_PER_STOCK
+        sell_amount = sp * SHARES_PER_STOCK
         bc = buy_cost(bp, SHARES_PER_STOCK)
         sr = sell_revenue(sp, SHARES_PER_STOCK)
+        buy_fee = bc - buy_amount          # 买入手续费
+        sell_fee = sell_amount - sr         # 卖出手续费
+        fee = round(buy_fee + sell_fee, 2)  # 单只股票总手续费
         gross = (sp - bp) * SHARES_PER_STOCK
         net   = sr - bc
         detail_rows.append({
@@ -261,12 +268,14 @@ def simulate_one_day(
             "shares":     SHARES_PER_STOCK,
             "buy_cost":   round(bc, 2),
             "sell_revenue": round(sr, 2),
+            "fee":        fee,
             "gross_profit": round(gross, 2),
             "net_profit":   round(net, 2),
         })
         total_buy  += bc
         total_sell += sr
         total_gross += gross
+        total_fee  += fee
 
     net_profit = total_sell - total_buy
     return_pct  = net_profit / total_buy * 100 if total_buy else 0.0
@@ -279,6 +288,7 @@ def simulate_one_day(
         "stock_count":  len(valid_instruments),
         "buy_total":    round(total_buy, 2),
         "sell_total":   round(total_sell, 2),
+        "total_fee":    round(total_fee, 2),
         "gross_profit": round(total_gross, 2),
         "net_profit":   round(net_profit, 2),
         "return_pct":   round(return_pct, 4),
@@ -358,7 +368,7 @@ def main(
     df_summary = pd.DataFrame(summary_rows, columns=[
         "date_T", "date_buy", "date_sell",
         "instruments", "stock_count",
-        "buy_total", "sell_total",
+        "buy_total", "sell_total", "total_fee",
         "gross_profit", "net_profit",
         "return_pct", "cum_profit",
     ])
@@ -371,7 +381,7 @@ def main(
         "date_T", "date_buy", "date_sell",
         "instrument", "shares",
         "buy_price", "sell_price",
-        "buy_cost", "sell_revenue",
+        "buy_cost", "sell_revenue", "fee",
         "gross_profit", "net_profit",
     ])
     df_detail.to_csv(det_path, index=False, encoding="utf-8-sig")
