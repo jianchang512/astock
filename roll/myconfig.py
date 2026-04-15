@@ -22,13 +22,15 @@ CATBOOST_MODEL = {
     "module_path": "qlib.contrib.model.catboost_model",
     "kwargs": {
         "loss": "RMSE",
-        "learning_rate": 0.0421,
+        "learning_rate": 0.03,
         "subsample": 0.8789,
         "max_depth": 6,
         "num_leaves": 100,
-        "thread_count": 20, 
+        "thread_count": 20,
         "grow_policy": "Lossguide",
-        "bootstrap_type": "MVS"
+        "bootstrap_type": "MVS",
+        "l2_leaf_reg": 5,
+        "iterations": 800,
     }
 }
 
@@ -77,7 +79,7 @@ LINEAR_MODEL = {
     "module_path": "qlib.contrib.model.linear",
     "kwargs": {
         "estimator": "ridge",  # 岭回归
-        "alpha": 0.05
+        "alpha": 0.02
     }
 }
 
@@ -87,11 +89,12 @@ XGBOOST_MODEL = {
     "kwargs": {
         "eval_metric": "rmse",
         "colsample_bytree": 0.8879,
-        "eta": 0.0421,
-        "max_depth": 8,
-        "n_estimators": 647,
+        "eta": 0.03,
+        "max_depth": 7,
+        "n_estimators": 800,
         "subsample": 0.8789,
-        "nthread": 20  # 建议根据你的 16 核硬件改为 16
+        "min_child_weight": 5,
+        "nthread": 20,
     }
 }
 
@@ -102,7 +105,7 @@ DOUBLE_ENSEMBLE_MODEL = {
         # --- DoubleEnsemble 自身参数 ---
         "base_model": "gbm",      # 内部使用的基础模型类型
         "loss": "mse",            # 损失函数
-        "num_models": 6,          # 集成中包含 6 个子模型
+        "num_models": 8,          # 集成中包含 8 个子模型 (增加以提高稳定性)
         "enable_sr": True,        # 启用子采样 (Sample Reuse)
         "enable_fs": True,        # 启用特征选择 (Feature Selection)
         "alpha1": 1,
@@ -111,16 +114,20 @@ DOUBLE_ENSEMBLE_MODEL = {
         "bins_fs": 5,
         "decay": 0.5,
         
-        # ⚠️ 注意: sample_ratios 有5个, sub_weights 有6个
+        # sample_ratios: num_models-1=7 个, sub_weights: num_models=8 个
         "sample_ratios": [
             0.8,
+            0.75,
             0.7,
+            0.65,
             0.6,
             0.5,
             0.4
         ],
         "sub_weights": [
             1,
+            0.3,
+            0.3,
             0.2,
             0.2,
             0.2,
@@ -129,15 +136,15 @@ DOUBLE_ENSEMBLE_MODEL = {
         ],
         
         # --- 传递给内部 base_model (gbm) 的参数 ---
-        "epochs": 136,
+        "epochs": 200,
         "colsample_bytree": 0.8879,
-        "learning_rate": 0.0421,
+        "learning_rate": 0.03,
         "subsample": 0.8789,
         "lambda_l1": 205.6999,
         "lambda_l2": 580.9768,
-        "max_depth": 8,
+        "max_depth": 7,
         "num_leaves": 210,
-        "num_threads": 20, # 建议改为 16，匹配你的硬件
+        "num_threads": 20,
         "verbosity": -1
     }
 }
@@ -148,13 +155,15 @@ GBDT_MODEL = {
     "kwargs": {
         "loss": "mse",
         "colsample_bytree": 0.8879,
-        "learning_rate": 0.0421,
+        "learning_rate": 0.03,
         "subsample": 0.8789,
         "lambda_l1": 205.6999,
         "lambda_l2": 580.9768,
-        "max_depth": 8,
-        "num_leaves": 210,
+        "max_depth": 7,
+        "num_leaves": 180,
         "num_threads": 20,
+        "n_estimators": 800,
+        "min_child_samples": 20,
     },
 }
 
