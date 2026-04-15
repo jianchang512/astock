@@ -24,6 +24,7 @@ from myconfig import (
     get_dataset_config,
     get_my_config,
     get_trade_label_config,
+    normalize_trade_offsets,
     CSI300_MARKET,
     XGBOOST_MODEL
 )
@@ -57,6 +58,13 @@ def test_get_dataset_config():
 
 def test_get_trade_label_config_supports_same_day_buy_next_day_sell():
     assert get_trade_label_config(0, 1) == (["Ref($close, -1)/$close - 1"], ["LABEL0"])
+
+def test_normalize_trade_offsets_validates_ranges():
+    assert normalize_trade_offsets(1, 3) == (1, 3)
+    with pytest.raises(ValueError):
+        normalize_trade_offsets(-1, 1)
+    with pytest.raises(ValueError):
+        normalize_trade_offsets(1, 1)
 
 # 3. 验证综合配置生成 (get_my_config)
 def test_get_my_config_structure():

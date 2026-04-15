@@ -30,6 +30,7 @@ class RollingTrader:
             "selection_overheat_quantile": 0.7,
             "selection_fallback_count": 10,
             "recency_halflife_days": 180,
+            "backtest_fee_rate": 0.002,
         }
 
         # 2. 加载并合并配置

@@ -42,6 +42,9 @@ selection_fallback_count: 10
 # 模型近期性衰减半衰期（天）
 recency_halflife_days: 180
 
+# 复盘/回测双边费率估计
+backtest_fee_rate: 0.002
+
 # 模型过滤器配置 (支持正则表达式)
 model_filter:
   - .*

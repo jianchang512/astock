@@ -7,7 +7,7 @@
 
 策略逻辑：
   每日 T 预测完成后，始终按 filter_ret.csv 中 avg_score 从高到低排序，
-  默认于 T 日收盘价买入 SHARES_PER_STOCK 股，
+  默认于 T日(T+0) 收盘价买入 SHARES_PER_STOCK 股，
   按 3 种持仓模式分别计算盈亏并输出独立 CSV：
     1. T日买T+1日卖：T日 买入，T+1 卖出（持仓 1 个交易日）
     2. T日买T+3日卖：T日 买入，T+3 卖出（持仓 3 个交易日）

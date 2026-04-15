@@ -71,7 +71,7 @@ class ModelReviewHelper:
 
         profit_num_list = [0.01 * i for i in range(1, 11)]  # 0.01 ~ 0.10
         market_avg_profit = df["real_label"].mean()
-        fee_rate = 0.002
+        fee_rate = float(self.kwargs.get("backtest_fee_rate", 0.002))
 
         topk_result_dict = {}
         topk_result_index = [
@@ -281,11 +281,13 @@ class ModelReviewHelper:
             self.review_result_df[date_str] = df_ret
             self.review_result_df_filter[date_str] = df_filter_ret
 
-    def _calculate_daily_equity(self, df, initial_cash=1.0, fee_rate=0.002):
+    def _calculate_daily_equity(self, df, initial_cash=1.0, fee_rate=None):
         """
         df: 你截图中的表格数据
         fee_rate: 双边交易成本 (佣金+印花税+滑点预估)
         """
+        if fee_rate is None:
+            fee_rate = float(self.kwargs.get("backtest_fee_rate", 0.002))
         # 1. 预处理：去掉没有收益数据的末尾行 (NaN)
         df = df.dropna(subset=['avg_real_label']).copy()
 
