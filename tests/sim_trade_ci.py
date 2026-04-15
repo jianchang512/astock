@@ -271,6 +271,16 @@ def extract_date_from_csv(subdir: Path) -> Optional[str]:
     return None
 
 
+def extract_all_dates_from_csv(subdir: Path) -> list[str]:
+    """从子目录中提取所有唯一的预测日期 YYYY-MM-DD（兼容回填模式多日期目录）"""
+    dates = set()
+    for f in subdir.iterdir():
+        m = re.match(r"(\d{4}-\d{2}-\d{2})_.*\.csv", f.name)
+        if m:
+            dates.add(m.group(1))
+    return sorted(dates)
+
+
 def select_trade_candidates(
     df: pd.DataFrame,
     top_n: int,
@@ -307,16 +317,18 @@ def simulate_one_day(
     top_n: int,
     hold_days: int = 1,
     buy_offset: int = 0,
+    date_override: Optional[str] = None,
 ) -> Optional[dict]:
     """
     处理一个 selection 子目录，返回当日模拟交易结果字典。
     无法处理时返回 None。
 
     参数：
-      hold_days  持仓天数（买入后持有的交易日数）
-      buy_offset 买入偏移，0 = T日买入，1 = T+1日买入
+      hold_days      持仓天数（买入后持有的交易日数）
+      buy_offset     买入偏移，0 = T日买入，1 = T+1日买入
+      date_override  指定处理的日期（兼容多日期目录）；为 None 时自动提取
     """
-    date_str = extract_date_from_csv(subdir)
+    date_str = date_override or extract_date_from_csv(subdir)
     if not date_str:
         print(f"[{subdir.name}] 未找到日期 CSV，跳过")
         return None
@@ -457,11 +469,24 @@ def _run_one_mode(
     print(f"{'='*50}")
 
     # ── 第一步：收集所有预测周期的模拟结果 ──
+    # 展开多日期目录（旧版回填兼容），按实际预测日期去重
     all_results: list[dict] = []
+    processed_dates: set[str] = set()
     for subdir in subdirs:
-        result = simulate_one_day(subdir, trade_date, top_n, hold_days=hold_days, buy_offset=buy_offset)
-        if result is not None:
-            all_results.append(result)
+        csv_dates = extract_all_dates_from_csv(subdir)
+        if not csv_dates:
+            continue
+        for date_str in csv_dates:
+            if date_str in processed_dates:
+                continue
+            processed_dates.add(date_str)
+            result = simulate_one_day(
+                subdir, trade_date, top_n,
+                hold_days=hold_days, buy_offset=buy_offset,
+                date_override=date_str,
+            )
+            if result is not None:
+                all_results.append(result)
 
     if not all_results:
         print(f"[{mode_label}] 没有可输出的结果（数据不足或行情尚未就绪）。")
