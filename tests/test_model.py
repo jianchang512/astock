@@ -81,3 +81,105 @@ def test_filter_ret_df_logic(mock_cli_params):
     assert "selection_score" in filtered.columns
     assert filtered["instrument"].tolist()[0] == "A"
     assert "C" not in filtered["instrument"].tolist()
+
+
+def test_save_results_uses_today_when_auto_predict(tmp_path, mock_cli_params):
+    """When _auto_predict is True and data date < today, directory should use today's date."""
+    from datetime import date, datetime
+
+    mock_cli_params['analysis_folder'] = str(tmp_path)
+    mock_cli_params['_auto_predict'] = True
+    cli = ModelCLI(**mock_cli_params)
+
+    # Create a DataFrame with a date in the past (yesterday)
+    yesterday = date(2026, 4, 14)
+    today_date = date(2026, 4, 15)
+
+    df_final = pd.DataFrame({
+        'datetime': [pd.Timestamp(yesterday)] * 2,
+        'instrument': ['SH600000', 'SH600001'],
+        'score': [0.1, 0.2],
+        'weight': [0.5, 0.5],
+        'exp_name': ['exp1', 'exp1'],
+        'rid': ['rid1', 'rid1'],
+    })
+
+    with patch.object(cli, 'get_model_list', return_value=[]), \
+         patch.object(cli, 'get_alpha_data', return_value=pd.DataFrame(columns=['datetime', 'instrument'])), \
+         patch.object(cli, 'filter_ret_df', side_effect=lambda df: df), \
+         patch('modelcli.datetime') as mock_dt:
+        mock_dt.now.return_value = datetime(2026, 4, 15, 14, 30, 0)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        cli._save_results(df_final, "selection", None)
+
+    # Directory should be named with today's date (20260415), not the data date (20260414)
+    dirs = [d for d in tmp_path.iterdir() if d.is_dir()]
+    assert len(dirs) == 1
+    assert "20260415" in dirs[0].name
+    assert "20260414" not in dirs[0].name
+
+
+def test_save_results_uses_data_date_when_not_auto(tmp_path, mock_cli_params):
+    """When _auto_predict is not set (manual predict_dates), directory uses data date."""
+    from datetime import date, datetime
+
+    mock_cli_params['analysis_folder'] = str(tmp_path)
+    # No _auto_predict flag (manual mode)
+    cli = ModelCLI(**mock_cli_params)
+
+    data_date = date(2026, 4, 14)
+
+    df_final = pd.DataFrame({
+        'datetime': [pd.Timestamp(data_date)] * 2,
+        'instrument': ['SH600000', 'SH600001'],
+        'score': [0.1, 0.2],
+        'weight': [0.5, 0.5],
+        'exp_name': ['exp1', 'exp1'],
+        'rid': ['rid1', 'rid1'],
+    })
+
+    with patch.object(cli, 'get_model_list', return_value=[]), \
+         patch.object(cli, 'get_alpha_data', return_value=pd.DataFrame(columns=['datetime', 'instrument'])), \
+         patch.object(cli, 'filter_ret_df', side_effect=lambda df: df), \
+         patch('modelcli.datetime') as mock_dt:
+        mock_dt.now.return_value = datetime(2026, 4, 15, 14, 30, 0)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        cli._save_results(df_final, "selection", None)
+
+    # Directory should use the actual data date (20260414)
+    dirs = [d for d in tmp_path.iterdir() if d.is_dir()]
+    assert len(dirs) == 1
+    assert "20260414" in dirs[0].name
+
+
+def test_save_results_same_date_no_change(tmp_path, mock_cli_params):
+    """When _auto_predict is True but data date equals today, directory uses data date."""
+    from datetime import date, datetime
+
+    mock_cli_params['analysis_folder'] = str(tmp_path)
+    mock_cli_params['_auto_predict'] = True
+    cli = ModelCLI(**mock_cli_params)
+
+    today_date = date(2026, 4, 15)
+
+    df_final = pd.DataFrame({
+        'datetime': [pd.Timestamp(today_date)] * 2,
+        'instrument': ['SH600000', 'SH600001'],
+        'score': [0.1, 0.2],
+        'weight': [0.5, 0.5],
+        'exp_name': ['exp1', 'exp1'],
+        'rid': ['rid1', 'rid1'],
+    })
+
+    with patch.object(cli, 'get_model_list', return_value=[]), \
+         patch.object(cli, 'get_alpha_data', return_value=pd.DataFrame(columns=['datetime', 'instrument'])), \
+         patch.object(cli, 'filter_ret_df', side_effect=lambda df: df), \
+         patch('modelcli.datetime') as mock_dt:
+        mock_dt.now.return_value = datetime(2026, 4, 15, 14, 30, 0)
+        mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        cli._save_results(df_final, "selection", None)
+
+    # Directory should use the data date (same as today: 20260415)
+    dirs = [d for d in tmp_path.iterdir() if d.is_dir()]
+    assert len(dirs) == 1
+    assert "20260415" in dirs[0].name

@@ -105,6 +105,7 @@ class RollingTrader:
             try:
                 latest_date = get_local_data_date(self.params["provider_uri"]).strip()
                 self.params['predict_dates'] = [{"start": latest_date, "end": latest_date}]
+                self.params['_auto_predict'] = True
                 logger.info(f"自动补全预测日期 (数据集最新): {latest_date}")
             except Exception as e:
                 logger.error(f"无法自动获取最新日期: {e}")

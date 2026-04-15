@@ -67,3 +67,39 @@ def test_attribute_binding():
     # 验证 getattr
     assert getattr(trader, "custom_key") == custom_val
     assert trader.custom_key == custom_val
+
+
+# 5. 测试自动补全预测日期时设置 _auto_predict 标志
+def test_auto_predict_flag_set(tmp_path):
+    """验证 _ensure_predict_dates 在自动补全时设置 _auto_predict=True"""
+    config_file = tmp_path / "config.yaml"
+    config_data = {
+        "provider_uri": str(tmp_path),
+    }
+    config_file.write_text(yaml.dump(config_data), encoding='utf-8')
+
+    # 创建模拟的日历文件
+    cal_dir = tmp_path / "calendars"
+    cal_dir.mkdir()
+    (cal_dir / "day.txt").write_text("2026-04-14\n")
+
+    trader = RollingTrader(config_path=str(config_file))
+
+    assert trader.params.get('_auto_predict') is True
+    assert trader.params['predict_dates'] == [{"start": "2026-04-14", "end": "2026-04-14"}]
+
+
+# 6. 测试手动指定 predict_dates 时不设置 _auto_predict 标志
+def test_manual_predict_no_flag(tmp_path):
+    """验证手动指定 predict_dates 时不会设置 _auto_predict"""
+    config_file = tmp_path / "config.yaml"
+    config_data = {
+        "provider_uri": str(tmp_path),
+        "predict_dates": [{"start": "2026-03-01", "end": "2026-03-31"}],
+    }
+    config_file.write_text(yaml.dump(config_data), encoding='utf-8')
+
+    trader = RollingTrader(config_path=str(config_file))
+
+    assert trader.params.get('_auto_predict') is None
+    assert trader.params['predict_dates'] == [{"start": "2026-03-01", "end": "2026-03-31"}]

@@ -347,11 +347,18 @@ class ModelCLI:
                 model_info_buf.write(f"\n\t\tModel: {info}\n")
         model_info_text = model_info_buf.getvalue()
 
+        today = datetime.now().date()
+        is_auto_predict = self.kwargs.get('_auto_predict', False)
+
         alpha158_df = self.get_alpha_data().reset_index()
         for date, group_df in df_final.groupby('datetime'):
             date_str = str(date.date())
-            # 按预测日期命名目录，使下游 get_score_subdirs / review / sim_trade 按日期正确匹配
-            dir_date = date.strftime('%Y%m%d')
+            # 当 predict_dates 由系统自动补全且数据日期早于今天时，使用今天的日期命名目录，
+            # 避免在新的一天运行时生成与前一天重复的目录名。
+            if is_auto_predict and date.date() < today:
+                dir_date = today.strftime('%Y%m%d')
+            else:
+                dir_date = date.strftime('%Y%m%d')
             save_dir = base_dir / f"{func_name}_{dir_date}_{run_time}"
             save_dir.mkdir(parents=True, exist_ok=True)
 
