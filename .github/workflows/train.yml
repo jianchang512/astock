@@ -62,16 +62,24 @@ jobs:
         id: need_train_check
         run: |
           echo "检查是否需要训练"
-          cd ./roll && python ./roll.py train need_train > ../need_train_result.txt
+          cd ./roll && python ./roll.py train need_train > ../need_train_result.txt 2>&1
           cd ..
-          NEED_TRAIN=$(tail -n1 need_train_result.txt)
+          echo "=== need_train 输出内容 ==="
+          cat need_train_result.txt
+          echo "=========================="
+          if grep -q "^NEED_TRAIN:True$" need_train_result.txt; then
+            NEED_TRAIN="True"
+          else
+            NEED_TRAIN="False"
+          fi
           echo "NEED_TRAIN_RESULT=$NEED_TRAIN" >> $GITHUB_ENV
+          echo "判断结果: $NEED_TRAIN"
 
       - name: Exit if not need training
         if: env.NEED_TRAIN_RESULT == 'False'
         run: |
           echo "不需要训练，直接中断 workflow。"
-          exit 1
+          exit 0
 
       - name: delete old model pkl
         run: |
