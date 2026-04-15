@@ -353,6 +353,7 @@ def simulate_one_day(
     trade_date: TradeDateCI,
     top_n: int,
     hold_days: int = 1,
+    buy_offset: int = 0,
     strategy: str = "composite",
     use_filter_ret: bool = True,
 ) -> Optional[dict]:
@@ -362,7 +363,8 @@ def simulate_one_day(
     参数：
       strategy      "composite" 使用综合评分，"baseline" 使用纯 avg_score
       use_filter_ret True 优先用 filter_ret.csv，False 用 ret.csv
-      hold_days     持仓天数（T+1买入后持有的交易日数）
+      hold_days     持仓天数（买入后持有的交易日数）
+      buy_offset    买入偏移，0 = T日买入，1 = T+1日买入
     """
     date_str = extract_date_from_csv(subdir)
     if not date_str:
@@ -372,9 +374,9 @@ def simulate_one_day(
     if idx is None:
         return None
 
-    # T+1 买入日，T+1+hold_days 卖出日
-    buy_date = trade_date.get_next_trade_date(date_str, offset=1)
-    sell_date = trade_date.get_next_trade_date(date_str, offset=1 + hold_days)
+    # T+buy_offset 买入日，T+buy_offset+hold_days 卖出日
+    buy_date = date_str if buy_offset == 0 else trade_date.get_next_trade_date(date_str, offset=buy_offset)
+    sell_date = trade_date.get_next_trade_date(date_str, offset=buy_offset + hold_days)
     if not buy_date or not sell_date:
         return None
 
@@ -497,6 +499,7 @@ def _run_one_strategy(
     subdirs: list[Path],
     trade_date: TradeDateCI,
     top_n: int,
+    buy_offset: int = 0,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """运行单个策略，返回 (汇总df, 明细df)"""
     summary_rows = []
@@ -507,6 +510,7 @@ def _run_one_strategy(
         result = simulate_one_day(
             subdir, trade_date, top_n,
             hold_days=hold_days,
+            buy_offset=buy_offset,
             strategy=strategy,
         )
         if result is None:
@@ -605,6 +609,7 @@ def main(
     qlib_score_dir: str = "./qlib_score_csv",
     top_n: int = 5,
     hold_days: int = 1,
+    buy_offset: int = 0,
     out: str = "./tests/sim_trade_result_v2.csv",
     detail_out: str = "./tests/sim_trade_detail_v2.csv",
 ):
@@ -616,6 +621,7 @@ def main(
       qlib_score_dir  qlib_score_csv 目录路径
       top_n           每日买入股票数量（默认 5）
       hold_days       持仓天数（1/3/5），默认 1
+      buy_offset      买入偏移，默认 0（即 T 日买入）
       out             汇总结果 CSV 输出路径
       detail_out      明细结果 CSV 输出路径
     """
@@ -636,17 +642,17 @@ def main(
         return
 
     print(f"共发现 {len(subdirs)} 个预测目录")
-    print(f"参数: top_n={top_n}, hold_days={hold_days}")
+    print(f"参数: top_n={top_n}, hold_days={hold_days}, buy_offset={buy_offset}")
     print(f"开始对比回测...\n")
 
     # ── 运行两种策略 ──
     print("▶ 运行综合评分策略 (composite)...")
     df_comp, det_comp = _run_one_strategy(
-        "composite", hold_days, subdirs, trade_date, top_n)
+        "composite", hold_days, subdirs, trade_date, top_n, buy_offset)
 
     print("▶ 运行纯分数策略 (baseline)...")
     df_base, det_base = _run_one_strategy(
-        "baseline", hold_days, subdirs, trade_date, top_n)
+        "baseline", hold_days, subdirs, trade_date, top_n, buy_offset)
 
     # ── 打印对比报告 ──
     print_comparison(df_comp, df_base, hold_days)
@@ -671,8 +677,8 @@ def main(
         for hd in [3, 5]:
             print(f"\n{'─' * 50}")
             print(f"▶ 额外对比: 持仓 {hd} 天模式")
-            df_c, _ = _run_one_strategy("composite", hd, subdirs, trade_date, top_n)
-            df_b, _ = _run_one_strategy("baseline", hd, subdirs, trade_date, top_n)
+            df_c, _ = _run_one_strategy("composite", hd, subdirs, trade_date, top_n, buy_offset)
+            df_b, _ = _run_one_strategy("baseline", hd, subdirs, trade_date, top_n, buy_offset)
             print_comparison(df_c, df_b, hd)
 
             # 保存

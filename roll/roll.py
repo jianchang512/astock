@@ -20,7 +20,16 @@ class RollingTrader:
         self.params: Dict[str, Any] = {
             "region": "cn",
             "predict_dates": None,
-            "provider_uri": None
+            "provider_uri": None,
+            "trade_buy_offset": 0,
+            "trade_sell_offset": 1,
+            "top_num_list": [3, 5, 10, 20],
+            "selection_score_quantile": 0.7,
+            "selection_min_pos_ratio": 0.5,
+            "selection_volatility_quantile": 0.6,
+            "selection_overheat_quantile": 0.7,
+            "selection_fallback_count": 10,
+            "recency_halflife_days": 180,
         }
 
         # 2. 加载并合并配置

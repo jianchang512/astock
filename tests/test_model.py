@@ -66,8 +66,18 @@ def test_get_model_list(mock_get_exp, mock_list_exps, mock_cli_params):
 def test_filter_ret_df_logic(mock_cli_params):
     cli = ModelCLI(**mock_cli_params)
     df = pd.DataFrame({
-        'STD5': [0.02, 0.5], 'STD20': [0.02, 0.02], 'STD60': [0.02, 0.02],
-        'ROC10': [1.0, 1.0], 'ROC20': [1.0, 1.0], 'ROC60': [1.0, 1.0]
+        'instrument': ['A', 'B', 'C'],
+        'avg_score': [0.15, 0.11, 0.02],
+        'pos_ratio': [0.9, 0.7, 0.4],
+        'STD5': [0.01, 0.08, 0.20],
+        'STD20': [0.02, 0.07, 0.18],
+        'STD60': [0.02, 0.06, 0.16],
+        'ROC5': [1.02, 1.10, 1.35],
+        'ROC10': [1.03, 1.01, 0.90],
+        'ROC20': [1.05, 1.02, 0.88],
+        'ROC60': [1.06, 1.03, 0.85],
     })
     filtered = cli.filter_ret_df(df)
-    assert len(filtered) == 1
+    assert "selection_score" in filtered.columns
+    assert filtered["instrument"].tolist()[0] == "A"
+    assert "C" not in filtered["instrument"].tolist()

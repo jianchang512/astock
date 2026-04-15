@@ -19,6 +19,7 @@ from datetime import datetime
 from qlib.contrib.data.handler import Alpha158, Alpha360
 from dataclasses import dataclass, field
 from typing import Dict, List
+from myconfig import get_trade_label_config, normalize_trade_offsets
 
 from model_backup import (
     compress_mlruns as _compress_mlruns,
@@ -49,6 +50,7 @@ class ModelCLI:
         # 注意：dataclasses.field 只能用于 dataclass 字段，这里必须用普通 dict
         self.rid_rank_icir: Dict[str, float] = {}
         self.rid_weight: Dict[str, float] = {}
+        self.rid_recency_weight: Dict[str, float] = {}
 
     @staticmethod
     def _round3(x: float) -> float:
@@ -62,6 +64,49 @@ class ModelCLI:
         exp_manager["kwargs"]["uri"] = "file:" + str(Path(uri_folder).expanduser())
         logger.info(f"Experiment uri: {exp_manager['kwargs']['uri']}")
         qlib.init(provider_uri=provider_uri, region=region, exp_manager=exp_manager)
+
+    def get_trade_offsets(self):
+        return normalize_trade_offsets(
+            self.kwargs.get("trade_buy_offset", 0),
+            self.kwargs.get("trade_sell_offset", 1),
+        )
+
+    def get_trade_label_config(self):
+        buy_offset, sell_offset = self.get_trade_offsets()
+        return get_trade_label_config(buy_offset=buy_offset, sell_offset=sell_offset)
+
+    def get_trade_label_expr(self):
+        return self.get_trade_label_config()[0][0]
+
+    def get_top_num_list(self):
+        top_num_list = self.kwargs.get("top_num_list", [3, 5, 10, 20])
+        if isinstance(top_num_list, str):
+            top_num_list = [int(x.strip()) for x in top_num_list.split(",") if x.strip()]
+        return [int(x) for x in top_num_list if int(x) > 0]
+
+    def get_reference_predict_date(self):
+        p_dates = self.kwargs.get("predict_dates") or []
+        if not p_dates:
+            return None
+        return pd.Timestamp(p_dates[0]["start"])
+
+    def _get_recency_weight(self, rec):
+        ref_date = self.get_reference_predict_date()
+        if ref_date is None:
+            return 1.0
+        task = rec.load_object("task")
+        train_end = pd.Timestamp(task["dataset"]["kwargs"]["segments"]["train"][1])
+        days_gap = max((ref_date - train_end).days, 0)
+        half_life = max(int(self.kwargs.get("recency_halflife_days", 180)), 1)
+        return float(0.5 ** (days_gap / half_life))
+
+    @staticmethod
+    def _zscore(series):
+        clean = pd.to_numeric(series, errors="coerce")
+        std = clean.std()
+        if pd.isna(std) or std == 0:
+            return pd.Series(0.0, index=clean.index)
+        return ((clean - clean.mean()) / std).fillna(0.0)
 
     def filter_rec(self, rec):
         _, ic_list = self.get_ic_info(rec)
@@ -91,6 +136,8 @@ class ModelCLI:
 
         exps = R.list_experiments()
         ret = []
+        self.rid_rank_icir = {}
+        self.rid_recency_weight = {}
 
         for name in exps:
             # 1. 基础过滤：排除默认项目和不匹配的项目
@@ -107,18 +154,22 @@ class ModelCLI:
                     mc.rid.append(rid)
                     _, ic_list = self.get_ic_info(recorder)
                     self.rid_rank_icir[rid] = self._round3(ic_list[3])
+                    self.rid_recency_weight[rid] = self._get_recency_weight(recorder)
 
             # 只有当这个实验下有符合条件的记录时才添加
             if mc.rid:
                 ret.append(mc)
-        # 通过 rank_icir 的平方为 rid_weight 分配权重（归一化处理）
-        # 使用平方值使高质量模型获得更大权重, 减弱低质量模型的影响
-        total_rank_icir_sq = sum(self.rid_rank_icir[rid] ** 2 for mc in ret for rid in mc.rid)
+        # 使用 rank_icir^2 × 近期性衰减做权重，让近期仍有效的模型拥有更高权重
+        raw_weight_map = {}
+        for mc in ret:
+            for rid in mc.rid:
+                raw_weight_map[rid] = max(self.rid_rank_icir[rid], 0.0) ** 2 * self.rid_recency_weight.get(rid, 1.0)
+        total_rank_icir_sq = sum(raw_weight_map.values())
         self.rid_weight = {}
         for mc in ret:
             for rid in mc.rid:
                 if total_rank_icir_sq != 0:
-                    self.rid_weight[rid] = self._round3(self.rid_rank_icir[rid] ** 2 / total_rank_icir_sq)
+                    self.rid_weight[rid] = self._round3(raw_weight_map[rid] / total_rank_icir_sq)
                 else:
                     self.rid_weight[rid] = self._round3(1.0 / (sum(len(mc.rid) for mc in ret) or 1))
         self._log_summary(ret)
@@ -165,6 +216,7 @@ class ModelCLI:
             "data_train_vec": data_train_vec,
             "train_time_vec": train_time_vec,
             "rank_icir": f"{self.rid_rank_icir[rec.id]:.3f}",
+            "recency_weight": f"{self.rid_recency_weight.get(rec.id, 1.0):.3f}",
             "weight": f"{self.rid_weight[rec.id]:.3f}",
         }
         print(info)
@@ -215,6 +267,7 @@ class ModelCLI:
 
                 dataset_config['kwargs']['segments']['test'] = (predict_date1, predict_date2)
                 dataset_config['kwargs']['handler']['kwargs']['end_time'] = predict_date2
+                dataset_config['kwargs']['handler']['kwargs']['label'] = self.get_trade_label_config()
 
                 dataset = init_instance_by_config(dataset_config)
                 pred_score = model.predict(dataset, segment="test")
@@ -325,27 +378,99 @@ class ModelCLI:
         df_final.to_csv(save_dir / "total.csv", index=True, encoding="utf-8-sig")
 
     def filter_ret_df(self, df):
-        # 稳健性过滤逻辑
-        df = df[(df['STD5'] < 0.10) & (df['STD20'] < 0.10) & (df['STD60'] < 0.10)]
-        df = df[(df['STD60'] < 0.05) & (df['STD5'] < 0.06)]
-        df = df[df['STD5'] < (df['STD60'] * 2)]
-        df = df[(df['ROC10'] > 0.80) & (df['ROC20'] > 0.80) & (df['ROC60'] > 0.80)]
-        df = df[df['ROC20'] < 1.30]
-        # 额外过滤：排除短期涨幅过大的股票（过热风险）和短期跌幅过大的股票
-        df = df[(df['ROC5'] > 0.85) & (df['ROC5'] < 1.20)] if 'ROC5' in df.columns else df
-        return df
+        ranked = df.copy()
+        if ranked.empty:
+            return ranked
+
+        numeric_cols = [
+            "avg_score", "pos_ratio", "STD5", "STD20", "STD60",
+            "ROC5", "ROC10", "ROC20", "ROC60",
+        ]
+        for col in numeric_cols:
+            if col in ranked.columns:
+                ranked[col] = pd.to_numeric(ranked[col], errors="coerce")
+
+        score_floor = pd.to_numeric(ranked["avg_score"], errors="coerce")
+        positive_scores = score_floor[score_floor > 0].dropna()
+        score_quantile = float(self.kwargs.get("selection_score_quantile", 0.7))
+        if not positive_scores.empty:
+            min_score = positive_scores.quantile(score_quantile)
+        else:
+            min_score = score_floor.dropna().quantile(min(score_quantile, 0.95))
+
+        pos_ratio_floor = float(self.kwargs.get("selection_min_pos_ratio", 0.5))
+        volatility_quantile = float(self.kwargs.get("selection_volatility_quantile", 0.6))
+        overheat_quantile = float(self.kwargs.get("selection_overheat_quantile", 0.7))
+        fallback_count = max(int(self.kwargs.get("selection_fallback_count", 10)), 1)
+
+        score_z = self._zscore(ranked["avg_score"])
+        pos_ratio_z = self._zscore(ranked["pos_ratio"]) if "pos_ratio" in ranked.columns else 0.0
+        momentum_source = pd.concat(
+            [ranked[col] - 1 for col in ("ROC10", "ROC20", "ROC60") if col in ranked.columns],
+            axis=1,
+        )
+        momentum_signal = momentum_source.mean(axis=1) if not momentum_source.empty else pd.Series(0.0, index=ranked.index)
+        momentum_z = self._zscore(momentum_signal)
+
+        volatility_source = pd.concat(
+            [ranked[col] for col in ("STD5", "STD20", "STD60") if col in ranked.columns],
+            axis=1,
+        )
+        volatility_signal = volatility_source.mean(axis=1) if not volatility_source.empty else pd.Series(0.0, index=ranked.index)
+        volatility_z = self._zscore(volatility_signal)
+
+        if "ROC5" in ranked.columns:
+            overheat_signal = (ranked["ROC5"] - 1).abs()
+        else:
+            overheat_signal = pd.Series(0.0, index=ranked.index)
+        overheat_z = self._zscore(overheat_signal)
+
+        ranked["selection_score"] = (
+            score_z
+            + 0.35 * pos_ratio_z
+            + 0.20 * momentum_z
+            - 0.25 * volatility_z
+            - 0.15 * overheat_z
+        )
+
+        keep_mask = ranked["avg_score"].ge(min_score)
+        if "pos_ratio" in ranked.columns:
+            keep_mask &= ranked["pos_ratio"].ge(pos_ratio_floor)
+        if not volatility_source.empty:
+            keep_mask &= volatility_signal.le(volatility_signal.quantile(volatility_quantile))
+        if "ROC5" in ranked.columns:
+            keep_mask &= overheat_signal.le(overheat_signal.quantile(overheat_quantile))
+
+        filtered = ranked[keep_mask].copy()
+        if filtered.empty:
+            filtered = ranked.sort_values(["selection_score", "avg_score"], ascending=False).head(fallback_count).copy()
+
+        return filtered.sort_values(["selection_score", "avg_score"], ascending=False)
 
     def get_real_label(self, dates = None, instruments='csi300'):
         if dates is None:
             dates = self.kwargs['predict_dates'][0]
-        df = D.features(D.instruments(instruments), ['Ref($close, -2)/Ref($close, -1) - 1'], start_time=dates['start'], end_time=dates['end'], freq='day')
+        instruments = instruments or self.kwargs.get("stock_pool", "csi300")
+        df = D.features(
+            D.instruments(instruments),
+            [self.get_trade_label_expr()],
+            start_time=dates['start'],
+            end_time=dates['end'],
+            freq='day',
+        )
         df.columns = ['real_label']
         return df
 
     def get_real_label_csi300(self, dates = None):
         if dates is None:
             dates = self.kwargs['predict_dates'][0]
-        df = D.features(['SH000300'], ['Ref($close, -2)/Ref($close, -1) - 1'], start_time=dates['start'], end_time=dates['end'], freq='day')
+        df = D.features(
+            ['SH000300'],
+            [self.get_trade_label_expr()],
+            start_time=dates['start'],
+            end_time=dates['end'],
+            freq='day',
+        )
         df.columns = ['real_label']
         return df
 

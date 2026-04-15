@@ -7,11 +7,11 @@
 
 策略逻辑：
   每日 T 预测完成后，始终按 filter_ret.csv 中 avg_score 从高到低排序，
-  于 T+1（下一个交易日）收盘价买入 SHARES_PER_STOCK 股，
+  默认于 T 日收盘价买入 SHARES_PER_STOCK 股，
   按 3 种持仓模式分别计算盈亏并输出独立 CSV：
-    1. T日买T+1日卖：T+1 买入，T+2 卖出（持仓 1 个交易日）
-    2. T日买T+3日卖：T+1 买入，T+4 卖出（持仓 3 个交易日）
-    3. T日买T+5日卖：T+1 买入，T+6 卖出（持仓 5 个交易日）
+    1. T日买T+1日卖：T日 买入，T+1 卖出（持仓 1 个交易日）
+    2. T日买T+3日卖：T日 买入，T+3 卖出（持仓 3 个交易日）
+    3. T日买T+5日卖：T日 买入，T+5 卖出（持仓 5 个交易日）
   注意：3 种持仓模式都使用同一套买卖策略，始终买入预测分数最高的 top_n 只股票。
 
 费率说明（A股，2023 年后）：
@@ -21,8 +21,8 @@
 
 输出说明：
   CSV 按实际交易日期组织，每行代表一个交易日的操作：
-  - 预测日（如 20260306）本身不产生任何买卖，不会出现在输出中
-  - 首个交易日（T+1）仅有买入，无卖出
+  - 默认情况下，预测日（如 20260306）本身就会产生买入
+  - 首个卖出交易日之前只会有买入，不会有卖出
   - 后续交易日同时包含卖出（上一轮持仓）和买入（新一轮预测）
 
 汇总 CSV 字段：
@@ -306,14 +306,15 @@ def simulate_one_day(
     trade_date: TradeDateCI,
     top_n: int,
     hold_days: int = 1,
+    buy_offset: int = 0,
 ) -> Optional[dict]:
     """
     处理一个 selection 子目录，返回当日模拟交易结果字典。
     无法处理时返回 None。
 
     参数：
-      hold_days  持仓天数（T日买入后持有的交易日数）
-                 1 = T日买T+1卖（默认），3 = T日买T+3卖，5 = T日买T+5卖
+      hold_days  持仓天数（买入后持有的交易日数）
+      buy_offset 买入偏移，0 = T日买入，1 = T+1日买入
     """
     date_str = extract_date_from_csv(subdir)
     if not date_str:
@@ -325,13 +326,13 @@ def simulate_one_day(
         print(f"[{date_str}] 不在交易日历中，跳过")
         return None
 
-    sell_offset = 1 + hold_days  # 从预测日算起的卖出偏移
+    sell_offset = buy_offset + hold_days  # 从预测日算起的卖出偏移
     trade_list = trade_date.get_trade_date_list()
     if idx + sell_offset >= len(trade_list):
-        print(f"[{date_str}] T+1/T+{1 + hold_days} 尚未到来，跳过")
+        print(f"[{date_str}] T+{buy_offset}/T+{sell_offset} 尚未到来，跳过")
         return None
 
-    buy_date = trade_date.get_next_date(date_str, 1)
+    buy_date = date_str if buy_offset == 0 else trade_date.get_next_date(date_str, buy_offset)
     sell_date = trade_date.get_next_date(date_str, sell_offset)
 
     # 读取 filter_ret.csv
@@ -437,6 +438,7 @@ def _run_one_mode(
     top_n: int,
     out_path: Path,
     det_path: Path,
+    buy_offset: int = 0,
 ):
     """
     运行单种持仓模式的模拟交易并输出 CSV。
@@ -449,7 +451,7 @@ def _run_one_mode(
       out_path   汇总 CSV 输出路径
       det_path   明细 CSV 输出路径
     """
-    mode_label = f"T日买T+{hold_days}日卖"
+    mode_label = f"T+{buy_offset}买T+{buy_offset + hold_days}卖" if buy_offset else f"T日买T+{hold_days}日卖"
     print(f"\n{'='*50}")
     print(f"开始模拟交易模式: {mode_label}  (hold_days={hold_days})")
     print(f"{'='*50}")
@@ -457,7 +459,7 @@ def _run_one_mode(
     # ── 第一步：收集所有预测周期的模拟结果 ──
     all_results: list[dict] = []
     for subdir in subdirs:
-        result = simulate_one_day(subdir, trade_date, top_n, hold_days=hold_days)
+        result = simulate_one_day(subdir, trade_date, top_n, hold_days=hold_days, buy_offset=buy_offset)
         if result is not None:
             all_results.append(result)
 
@@ -621,6 +623,7 @@ def main(
     provider_uri: str = "~/.qlib/qlib_data/cn_data",
     qlib_score_dir: str = "./qlib_score_csv",
     top_n: int = 3,
+    buy_offset: int = 0,
     out: str = "./tests/sim_trade_result.csv",
     detail_out: str = "./tests/sim_trade_detail.csv",
 ):
@@ -634,6 +637,7 @@ def main(
       provider_uri    qlib 数据目录路径
       qlib_score_dir  qlib_score_csv 目录路径（含 selection_* 子目录）
       top_n           每日买入股票数量（默认 3）
+      buy_offset      买入偏移，默认 0（即 T 日买入）
       out             汇总结果 CSV 输出路径（T+1 模式基准名，T+3/T+5 自动加后缀）
       detail_out      明细结果 CSV 输出路径（T+1 模式基准名，T+3/T+5 自动加后缀）
     """
@@ -653,7 +657,7 @@ def main(
         print("未找到任何 selection 子目录，退出。")
         return
 
-    print(f"共发现 {len(subdirs)} 个预测目录，开始模拟交易（top_n={top_n}）...")
+    print(f"共发现 {len(subdirs)} 个预测目录，开始模拟交易（top_n={top_n}, buy_offset={buy_offset}）...")
 
     # 3 种持仓模式：T日买T+1卖、T日买T+3卖、T日买T+5卖
     hold_days_list = [1, 3, 5]
@@ -677,6 +681,7 @@ def main(
             top_n=top_n,
             out_path=out_path,
             det_path=det_path,
+            buy_offset=buy_offset,
         )
 
 

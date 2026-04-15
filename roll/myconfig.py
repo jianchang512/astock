@@ -9,6 +9,9 @@ CSI300_BENCH = "SH000300"
 DATASET_ALPHA158_CLASS = "Alpha158"
 DATASET_ALPHA360_CLASS = "Alpha360"
 
+DEFAULT_TRADE_BUY_OFFSET = 0
+DEFAULT_TRADE_SELL_OFFSET = 1
+
 ###################################
 # config
 ###################################
@@ -201,12 +204,32 @@ def get_data_handler_config(
         "instruments": instruments,
     }
 
+def normalize_trade_offsets(buy_offset=DEFAULT_TRADE_BUY_OFFSET, sell_offset=DEFAULT_TRADE_SELL_OFFSET):
+    buy_offset = int(buy_offset)
+    sell_offset = int(sell_offset)
+    if buy_offset < 0:
+        raise ValueError("buy_offset must be >= 0")
+    if sell_offset <= buy_offset:
+        raise ValueError("sell_offset must be greater than buy_offset")
+    return buy_offset, sell_offset
+
+def get_trade_label_config(
+    buy_offset=DEFAULT_TRADE_BUY_OFFSET,
+    sell_offset=DEFAULT_TRADE_SELL_OFFSET,
+):
+    buy_offset, sell_offset = normalize_trade_offsets(buy_offset, sell_offset)
+    buy_expr = "$close" if buy_offset == 0 else f"Ref($close, -{buy_offset})"
+    sell_expr = f"Ref($close, -{sell_offset})"
+    return [f"{sell_expr}/{buy_expr} - 1"], ["LABEL0"]
+
 def get_dataset_config(
     dataset_class=DATASET_ALPHA158_CLASS,
     train=("2015-01-01", "2016-12-31"),
     valid=("2017-01-01", "2017-02-28"),
     test=("2017-03-01", "2026-12-31"),
     handler_kwargs=None,  # 建议默认值设为 None，避免可变参数陷阱
+    buy_offset=DEFAULT_TRADE_BUY_OFFSET,
+    sell_offset=DEFAULT_TRADE_SELL_OFFSET,
 ):
     # 1. 如果没传 handler_kwargs，给个默认字典
     if handler_kwargs is None:
@@ -224,6 +247,8 @@ def get_dataset_config(
     if "fit_end_time" not in kwargs:
         kwargs["fit_end_time"] = train[1]
     # ===========================================
+    if "label" not in kwargs:
+        kwargs["label"] = get_trade_label_config(buy_offset=buy_offset, sell_offset=sell_offset)
 
     return {
         "class": "DatasetH",
@@ -300,10 +325,21 @@ def get_model_config(model_name: str):
         case _:
             raise ValueError(f"Model {model_name} is not supported.")
 
-def get_my_config(model_name: str, dataset_name: str, stock_pool: str):
+def get_my_config(
+    model_name: str,
+    dataset_name: str,
+    stock_pool: str,
+    buy_offset=DEFAULT_TRADE_BUY_OFFSET,
+    sell_offset=DEFAULT_TRADE_SELL_OFFSET,
+):
     handler_kwargs = {"instruments": stock_pool}
     return {
         "model": get_model_config(model_name),
-        "dataset": get_dataset_config(dataset_class=dataset_name, handler_kwargs=handler_kwargs),
+        "dataset": get_dataset_config(
+            dataset_class=dataset_name,
+            handler_kwargs=handler_kwargs,
+            buy_offset=buy_offset,
+            sell_offset=sell_offset,
+        ),
         "record": RECORD_CONFIG,
     }

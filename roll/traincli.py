@@ -105,7 +105,13 @@ class TrainCLI:
         model_name = kwargs["model_name"]
         dataset_name = kwargs["dataset_name"]
         stock_pool = kwargs["stock_pool"]
-        self.task_config = get_my_config(model_name, dataset_name, stock_pool)
+        self.task_config = get_my_config(
+            model_name,
+            dataset_name,
+            stock_pool,
+            buy_offset=kwargs.get("trade_buy_offset", 0),
+            sell_offset=kwargs.get("trade_sell_offset", 1),
+        )
         rolling_type = kwargs["rolling_type"]
         self.rolling_gen = RollingGen(step=step, rtype=rolling_type, ds_extra_mod_func=my_enhanced_handler_mod)
 
@@ -201,5 +207,4 @@ class TrainCLI:
         max_mlruns_date = max(mlruns_dates)
         
         return max_mlruns_date < local_data_date
-
 

@@ -45,3 +45,7 @@ def test_select_trade_candidates_keeps_top_n_even_with_non_positive_scores():
 
 def test_main_top_n_default_is_3():
     assert inspect.signature(sim_trade_ci.main).parameters["top_n"].default == 3
+
+
+def test_main_buy_offset_default_is_0():
+    assert inspect.signature(sim_trade_ci.main).parameters["buy_offset"].default == 0

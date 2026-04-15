@@ -25,6 +25,23 @@ predict_dates:
   # - start: 2026-02-03
   #   end: 2026-02-03
 
+# 统一交易口径: 默认 T 日买, T+1 日卖
+trade_buy_offset: 0
+trade_sell_offset: 1
+
+# 赚钱导向的复盘/回测 TopK
+top_num_list: [3, 5, 10, 20]
+
+# 自适应选股过滤参数
+selection_score_quantile: 0.7
+selection_min_pos_ratio: 0.5
+selection_volatility_quantile: 0.6
+selection_overheat_quantile: 0.7
+selection_fallback_count: 10
+
+# 模型近期性衰减半衰期（天）
+recency_halflife_days: 180
+
 # 模型过滤器配置 (支持正则表达式)
 model_filter:
   - .*
