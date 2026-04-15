@@ -203,8 +203,13 @@ class TrainCLI:
         print(f"mlruns_dates: {mlruns_dates}")
         local_data_date = get_local_data_date(self.kwargs['provider_uri'])
         print(f"local_data_date: {local_data_date}")
-    
+
+        if not mlruns_dates:
+            print("NEED_TRAIN:True")
+            return True
+
         max_mlruns_date = max(mlruns_dates)
-        
-        return max_mlruns_date < local_data_date
+        result = max_mlruns_date < local_data_date
+        print(f"NEED_TRAIN:{result}")
+        return result
 
