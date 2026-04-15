@@ -195,14 +195,17 @@ def get_data_handler_config(
     fit_start_time=None, 
     fit_end_time=None,
     instruments=CSI300_MARKET,
+    **extra_kwargs,
 ):
-    return {
+    config = {
         "start_time": start_time,
         "end_time": end_time,
         "fit_start_time": fit_start_time,
         "fit_end_time": fit_end_time,
         "instruments": instruments,
     }
+    config.update(extra_kwargs)
+    return config
 
 def normalize_trade_offsets(buy_offset=DEFAULT_TRADE_BUY_OFFSET, sell_offset=DEFAULT_TRADE_SELL_OFFSET):
     buy_offset = int(buy_offset)

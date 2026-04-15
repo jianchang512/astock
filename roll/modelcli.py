@@ -94,8 +94,11 @@ class ModelCLI:
         ref_date = self.get_reference_predict_date()
         if ref_date is None:
             return 1.0
-        task = rec.load_object("task")
-        train_end = pd.Timestamp(task["dataset"]["kwargs"]["segments"]["train"][1])
+        try:
+            task = rec.load_object("task")
+            train_end = pd.Timestamp(task["dataset"]["kwargs"]["segments"]["train"][1])
+        except Exception:
+            return 1.0
         days_gap = max((ref_date - train_end).days, 0)
         half_life = max(int(self.kwargs.get("recency_halflife_days", 180)), 1)
         return float(0.5 ** (days_gap / half_life))
