@@ -114,7 +114,7 @@ DOUBLE_ENSEMBLE_MODEL = {
         "bins_fs": 5,
         "decay": 0.5,
         
-        # ⚠️ 注意: sample_ratios 有 num_models-1 个, sub_weights 有 num_models 个
+        # sample_ratios: num_models-1=7 个, sub_weights: num_models=8 个
         "sample_ratios": [
             0.8,
             0.75,

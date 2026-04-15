@@ -112,7 +112,7 @@ class ModelCLI:
             if mc.rid:
                 ret.append(mc)
         # 通过 rank_icir 的平方为 rid_weight 分配权重（归一化处理）
-        # 使用平方值使高质量模型获得更大权重，减弱低质量模型的影响
+        # 使用平方值使高质量模型获得更大权重, 减弱低质量模型的影响
         total_rank_icir_sq = sum(self.rid_rank_icir[rid] ** 2 for mc in ret for rid in mc.rid)
         self.rid_weight = {}
         for mc in ret:
@@ -332,8 +332,7 @@ class ModelCLI:
         df = df[(df['ROC10'] > 0.80) & (df['ROC20'] > 0.80) & (df['ROC60'] > 0.80)]
         df = df[df['ROC20'] < 1.30]
         # 额外过滤：排除短期涨幅过大的股票（过热风险）和短期跌幅过大的股票
-        df = df[df['ROC5'] > 0.85] if 'ROC5' in df.columns else df
-        df = df[df['ROC5'] < 1.20] if 'ROC5' in df.columns else df
+        df = df[(df['ROC5'] > 0.85) & (df['ROC5'] < 1.20)] if 'ROC5' in df.columns else df
         return df
 
     def get_real_label(self, dates = None, instruments='csi300'):
