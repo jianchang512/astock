@@ -159,10 +159,11 @@ class ModelReviewHelper:
             print("未发现格式为 xxxx-xx-xx_ 的 CSV 文件名")
             return
 
+        is_multi_date = len(all_dates) > 1
         for date_str in all_dates:
-            self._review_single_date(subdir, date_str)
+            self._review_single_date(subdir, date_str, is_multi_date)
 
-    def _review_single_date(self, subdir: Path, date_str: str):
+    def _review_single_date(self, subdir: Path, date_str: str, is_multi_date: bool = False):
         """复盘子目录中某一个预测日期"""
         print(f"直接从文件名提取的日期: {date_str}")
 
@@ -216,7 +217,7 @@ class ModelReviewHelper:
             return
 
         # 用 subdir.name + date_str 做 key，避免同一目录下多日期相互覆盖
-        result_key = f"{subdir.name}_{date_str}" if len(self._extract_all_dates_from_csv_names(subdir)) > 1 else subdir.name
+        result_key = f"{subdir.name}_{date_str}" if is_multi_date else subdir.name
 
         print("分析 df_ret:")
         self.review_result_string += f"### {date_str}_ret.csv\n"
