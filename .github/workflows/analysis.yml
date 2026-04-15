@@ -108,6 +108,9 @@ jobs:
           echo ">>> 正在暂存分析结果..."
           mkdir -p /tmp/save_results
           cp -r /home/runner/.qlibAssistant/analysis/* /tmp/save_results/
+        
+          # 3. 丢弃本地修改 (如 roll/config.yaml 被回填日期步骤修改)
+          git stash --include-untracked
 
           # 3. 切换分支逻辑
           git fetch origin
