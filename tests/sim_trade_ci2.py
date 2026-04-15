@@ -344,6 +344,16 @@ def extract_date_from_csv(subdir: Path) -> Optional[str]:
     return None
 
 
+def extract_all_dates_from_csv(subdir: Path) -> list[str]:
+    """从子目录中提取所有唯一的预测日期 YYYY-MM-DD（兼容回填模式多日期目录）"""
+    dates = set()
+    for f in subdir.iterdir():
+        m = re.match(r"(\d{4}-\d{2}-\d{2})_.*\.csv", f.name)
+        if m:
+            dates.add(m.group(1))
+    return sorted(dates)
+
+
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # 核心：单日模拟交易
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -356,17 +366,19 @@ def simulate_one_day(
     buy_offset: int = 0,
     strategy: str = "composite",
     use_filter_ret: bool = True,
+    date_override: Optional[str] = None,
 ) -> Optional[dict]:
     """
     处理一个 selection 子目录，返回当日模拟交易结果字典。
 
     参数：
-      strategy      "composite" 使用综合评分，"baseline" 使用纯 avg_score
+      strategy       "composite" 使用综合评分，"baseline" 使用纯 avg_score
       use_filter_ret True 优先用 filter_ret.csv，False 用 ret.csv
-      hold_days     持仓天数（买入后持有的交易日数）
-      buy_offset    买入偏移，0 = T日买入，1 = T+1日买入
+      hold_days      持仓天数（买入后持有的交易日数）
+      buy_offset     买入偏移，0 = T日买入，1 = T+1日买入
+      date_override  指定处理的日期（兼容多日期目录）；为 None 时自动提取
     """
-    date_str = extract_date_from_csv(subdir)
+    date_str = date_override or extract_date_from_csv(subdir)
     if not date_str:
         return None
 
@@ -380,17 +392,25 @@ def simulate_one_day(
     if not buy_date or not sell_date:
         return None
 
-    # 读取 CSV：优先 filter_ret，退而求其次 ret
+    # 读取 CSV：优先指定日期的 filter_ret，退而求其次 ret
     csv_path = None
     if use_filter_ret:
-        for f in subdir.glob("*_filter_ret.csv"):
-            csv_path = f
-            break
-    if csv_path is None:
-        for f in subdir.glob("*_ret.csv"):
-            if "filter" not in f.name:
+        specific_filter = subdir / f"{date_str}_filter_ret.csv"
+        if specific_filter.exists():
+            csv_path = specific_filter
+        else:
+            for f in subdir.glob("*_filter_ret.csv"):
                 csv_path = f
                 break
+    if csv_path is None:
+        specific_ret = subdir / f"{date_str}_ret.csv"
+        if specific_ret.exists():
+            csv_path = specific_ret
+        else:
+            for f in subdir.glob("*_ret.csv"):
+                if "filter" not in f.name:
+                    csv_path = f
+                    break
     if csv_path is None:
         return None
 
@@ -505,21 +525,30 @@ def _run_one_strategy(
     summary_rows = []
     all_detail = []
     cum_net = 0.0
+    processed_dates: set[str] = set()
 
     for subdir in subdirs:
-        result = simulate_one_day(
-            subdir, trade_date, top_n,
-            hold_days=hold_days,
-            buy_offset=buy_offset,
-            strategy=strategy,
-        )
-        if result is None:
+        csv_dates = extract_all_dates_from_csv(subdir)
+        if not csv_dates:
             continue
+        for date_str in csv_dates:
+            if date_str in processed_dates:
+                continue
+            processed_dates.add(date_str)
+            result = simulate_one_day(
+                subdir, trade_date, top_n,
+                hold_days=hold_days,
+                buy_offset=buy_offset,
+                strategy=strategy,
+                date_override=date_str,
+            )
+            if result is None:
+                continue
 
-        all_detail.extend(result.pop("_detail_rows", []))
-        cum_net += result["净利润"]
-        result["累计净利润"] = round(cum_net, 2)
-        summary_rows.append(result)
+            all_detail.extend(result.pop("_detail_rows", []))
+            cum_net += result["净利润"]
+            result["累计净利润"] = round(cum_net, 2)
+            summary_rows.append(result)
 
     df_summary = pd.DataFrame(summary_rows) if summary_rows else pd.DataFrame()
     df_detail = pd.DataFrame(all_detail) if all_detail else pd.DataFrame()

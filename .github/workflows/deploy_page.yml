@@ -8,7 +8,7 @@ on:
       - 'page/**'
       - 'qlib_score_csv/**'
   workflow_run:
-    workflows: ["Review"]
+    workflows: ["Review", "Analysis"]
     types:
       - completed
 

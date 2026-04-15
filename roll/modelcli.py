@@ -330,17 +330,34 @@ class ModelCLI:
 
     def _save_results(self, df_final, func_name, latest_stock_list):
         base_dir = Path(self.kwargs['analysis_folder']).expanduser()
-        save_dir = base_dir / f"{func_name}_{datetime.now().strftime('%Y%m%d_%H_%M_%S')}"
-        save_dir.mkdir(parents=True, exist_ok=True)
-        md_file = save_dir / "total.md"
+        run_time = datetime.now().strftime('%H_%M_%S')
 
-        append_to_file(md_file, f"# params \n")
-        append_to_file(md_file, f" {self.kwargs}\n\n")
-        self._record_model_info(md_file)
+        # 预先构建 model info 文本，避免为每个日期目录重复遍历模型
+        import io
+        model_info_buf = io.StringIO()
+        model_info_buf.write(f"# params \n {self.kwargs}\n\n")
+        model_info_buf.write(f"\n\n # model info \n\n")
+        model_list = self.get_model_list()
+        for mc in model_list:
+            exp = R.get_exp(experiment_name=mc.exp_name)
+            model_info_buf.write(f"Experiment: {exp.name} {exp.id} (Recorders: {len(mc.rid)}/{len(exp.list_recorders())})\n")
+            for rid in mc.rid:
+                info = self.print_rec(exp.get_recorder(recorder_id=rid))
+                model_info_buf.write(f"\n\tRecorder: {rid}\n")
+                model_info_buf.write(f"\n\t\tModel: {info}\n")
+        model_info_text = model_info_buf.getvalue()
 
         alpha158_df = self.get_alpha_data().reset_index()
         for date, group_df in df_final.groupby('datetime'):
             date_str = str(date.date())
+            # 按预测日期命名目录，使下游 get_score_subdirs / review / sim_trade 按日期正确匹配
+            dir_date = date.strftime('%Y%m%d')
+            save_dir = base_dir / f"{func_name}_{dir_date}_{run_time}"
+            save_dir.mkdir(parents=True, exist_ok=True)
+
+            md_file = save_dir / "total.md"
+            append_to_file(md_file, model_info_text)
+
             # 使用模型权重(基于 rid_rank_icir 归一化得到的 self.rid_weight)计算加权平均分
             group_df = group_df.copy()
             ret_df = (
@@ -377,8 +394,7 @@ class ModelCLI:
             ret_df.to_csv(save_dir / f"{date_str}_ret.csv", index=True, encoding="utf-8-sig")
             ret_filter_df = ret_filter_df.reset_index(drop=True)
             ret_filter_df.to_csv(save_dir / f"{date_str}_filter_ret.csv", index=True, encoding="utf-8-sig")
-
-        df_final.to_csv(save_dir / "total.csv", index=True, encoding="utf-8-sig")
+            group_df.to_csv(save_dir / "total.csv", index=True, encoding="utf-8-sig")
 
     def filter_ret_df(self, df):
         ranked = df.copy()

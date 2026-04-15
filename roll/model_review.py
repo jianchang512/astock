@@ -139,15 +139,32 @@ class ModelReviewHelper:
             None,
         )
 
+    def _extract_all_dates_from_csv_names(self, subdir: Path):
+        """提取子目录中所有唯一的预测日期（兼容回填模式产生的多日期目录）"""
+        dates = set()
+        for file in subdir.iterdir():
+            if file.is_file():
+                m = re.match(r"(\d{4}-\d{2}-\d{2})_.*\.csv", file.name)
+                if m:
+                    dates.add(m.group(1))
+        return sorted(dates)
+
     def _review_subdir(self, subdir: Path):
+        """遍历子目录中所有预测日期并逐日复盘（兼容旧版单日和回填多日目录）"""
         print(f"- {subdir.name}")
         self.review_result_string += f"## {subdir.name}\n"
 
-        date_str = self._extract_date_from_csv_name(subdir)
-        if date_str:
-            print(f"直接从文件名提取的日期: {date_str}")
-        else:
+        all_dates = self._extract_all_dates_from_csv_names(subdir)
+        if not all_dates:
             print("未发现格式为 xxxx-xx-xx_ 的 CSV 文件名")
+            return
+
+        for date_str in all_dates:
+            self._review_single_date(subdir, date_str)
+
+    def _review_single_date(self, subdir: Path, date_str: str):
+        """复盘子目录中某一个预测日期"""
+        print(f"直接从文件名提取的日期: {date_str}")
 
         idx = self.trade_date.get_date_index(date_str)
         if idx is None:
@@ -198,17 +215,20 @@ class ModelReviewHelper:
             self.review_result_string += f"还不能复盘 {date_str}（买入日或卖出日行情数据尚未就绪：buy={buy_date}, sell={sell_date}）\n"
             return
 
+        # 用 subdir.name + date_str 做 key，避免同一目录下多日期相互覆盖
+        result_key = f"{subdir.name}_{date_str}" if len(self._extract_all_dates_from_csv_names(subdir)) > 1 else subdir.name
+
         print("分析 df_ret:")
         self.review_result_string += f"### {date_str}_ret.csv\n"
         df = self._review_csv(df_ret, real_df, buy_date_original_data, sell_date_original_data)
-        self.review_result_df[subdir.name] = df
+        self.review_result_df[result_key] = df
 
         print("分析 df_filter_ret:")
         self.review_result_string += f"### {date_str}_filter_ret.csv\n"
         df = self._review_csv(
             df_filter_ret, real_df, buy_date_original_data, sell_date_original_data
         )
-        self.review_result_df_filter[subdir.name] = df
+        self.review_result_df_filter[result_key] = df
 
     # ---------- 最终结果落盘 ----------
     def save_review_result(self):
