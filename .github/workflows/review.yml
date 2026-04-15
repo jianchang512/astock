@@ -109,7 +109,8 @@ jobs:
           find review_csv backtest_csv -type f -iname '*.csv' -delete 2>/dev/null || true
 
           echo ">>> 清理本地未提交的变更，避免切换分支冲突..."
-          git stash --include-untracked || true
+          git checkout -- .
+          git clean -fd
 
 
           echo ">>> 切换到 qlib_score 分支..."
