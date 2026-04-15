@@ -7,7 +7,7 @@ from loguru import logger
 from pprint import pprint
 from utils import append_to_file, TradeDate
 
-top_num_list = [10, 20, 30, 50, 80, 100]
+DEFAULT_TOP_NUM_LIST = [3, 5, 10, 20]
 
 class ModelReviewHelper:
     """负责模型预测结果的回测复盘逻辑，拆分自 ModelCLI 降低单文件复杂度。"""
@@ -28,10 +28,32 @@ class ModelReviewHelper:
         # ---------- 回测 结果 ----------
         self.backtest_result_df = {}
         self.backtest_result_df_filter = {}
+        self.backtest_summary_df = {}
+        self.backtest_summary_df_filter = {}
+
+    def _get_top_num_list(self):
+        top_num_list = self.cli.get_top_num_list()
+        return top_num_list or DEFAULT_TOP_NUM_LIST
+
+    def _get_trade_window(self, date_str: str):
+        buy_offset, sell_offset = self.cli.get_trade_offsets()
+        trade_dates = self.trade_date.get_trade_date_list()
+        idx = self.trade_date.get_date_index(date_str)
+        if idx is None or idx + sell_offset >= len(trade_dates):
+            return None, None
+        buy_date = date_str if buy_offset == 0 else self.trade_date.get_next_date(date_str, buy_offset)
+        sell_date = self.trade_date.get_next_date(date_str, sell_offset)
+        return buy_date, sell_date
+
+    def _trade_window_label(self):
+        buy_offset, sell_offset = self.cli.get_trade_offsets()
+        return f"T+{buy_offset}买T+{sell_offset}卖"
 
     # ---------- CSV 单日回测 ----------
-    def _review_csv(self, df, real_df, n1, n2):
+    def _review_csv(self, df, real_df, buy_df, sell_df):
         df = df[df["avg_score"] > 0].copy()  # 避免 SettingWithCopyWarning
+        if df.empty:
+            return df
         real_map = real_df.drop_duplicates("instrument").set_index("instrument")["real_label"]
         df["real_label"] = df["instrument"].map(real_map)
 
@@ -41,13 +63,15 @@ class ModelReviewHelper:
         date_str = df["datetime"].iloc[0]
         print(f"分析 {date_str} csv")
 
-        n1_renamed = n1[["instrument", "close"]].rename(columns={"close": "n1close"})
-        n2_renamed = n2[["instrument", "high"]].rename(columns={"high": "n2high"})
+        buy_renamed = buy_df[["instrument", "close"]].rename(columns={"close": "buy_close"})
+        sell_renamed = sell_df[["instrument", "high"]].rename(columns={"high": "sell_high"})
 
-        df = df.merge(n1_renamed, on="instrument", how="left")
-        df = df.merge(n2_renamed, on="instrument", how="left")
+        df = df.merge(buy_renamed, on="instrument", how="left")
+        df = df.merge(sell_renamed, on="instrument", how="left")
 
         profit_num_list = [0.01 * i for i in range(1, 11)]  # 0.01 ~ 0.10
+        market_avg_profit = df["real_label"].mean()
+        fee_rate = float(self.kwargs.get("backtest_fee_rate", 0.002))
 
         topk_result_dict = {}
         topk_result_index = [
@@ -61,24 +85,33 @@ class ModelReviewHelper:
             "止盈8%胜率",
             "止盈9%胜率",
             "止盈10%胜率",
-            "持有一天平均收益",
-            "一天正收益占比",
+            "平均收益",
+            "正收益占比",
+            "方向命中率",
+            "TopK-预测池收益差",
+            "扣费后估算收益",
         ]
 
-        for top_num in top_num_list:
+        for top_num in self._get_top_num_list():
             topk_df = df.sort_values(by="avg_score", ascending=False).head(top_num)
             topk_avg_profit = topk_df["real_label"].mean()
+            positive_ratio = (topk_df["real_label"] > 0).sum() / len(topk_df)
             topk_radio = ((topk_df["real_label"] * topk_df["avg_score"]) > 0).sum() / len(topk_df)
+            spread = topk_avg_profit - market_avg_profit
+            fee_adjusted = topk_avg_profit - fee_rate
 
             profit_list = []
             for profit_num in profit_num_list:
-                topk_df_profit = (topk_df["n2high"] > topk_df["n1close"] * (1 + profit_num)).sum() / len(
+                topk_df_profit = (topk_df["sell_high"] > topk_df["buy_close"] * (1 + profit_num)).sum() / len(
                     topk_df
                 )
                 profit_list.append(topk_df_profit)
 
             profit_list.append(topk_avg_profit)
+            profit_list.append(positive_ratio)
             profit_list.append(topk_radio)
+            profit_list.append(spread)
+            profit_list.append(fee_adjusted)
             topk_result_dict[f"Top{top_num}"] = profit_list
 
         topk_result_df = pd.DataFrame(topk_result_dict, index=topk_result_index)
@@ -121,19 +154,17 @@ class ModelReviewHelper:
             logger.info(f"{subdir.name} 日期 {date_str} 不在交易日日历中，不能复盘")
             return
 
-        # 复盘依赖下一个与下下个交易日，任一缺失都不执行复盘。
-        if idx + 2 >= len(self.trade_date.get_trade_date_list()):
+        buy_date, sell_date = self._get_trade_window(date_str)
+        if not buy_date or not sell_date:
             logger.info(f"还不能复盘 {date_str}")
             self.review_result_string += f"还不能复盘 {date_str}\n"
             return
 
-        next1_date = self.trade_date.get_next_date(date_str, 1) if idx + 1 < len(self.trade_date.get_trade_date_list()) else None
-        next2_date = self.trade_date.get_next_date(date_str, 2) if idx + 2 < len(self.trade_date.get_trade_date_list()) else None
-
         logger.info(
             f"开始复盘 {date_str if date_str else '[未知日期]'}  "
-            f"btw:[下1个交易日: {next1_date if next1_date else '[未知日期]'}  "
-            f"下2个交易日: {next2_date if next2_date else '[未知日期]'}]"
+            f"btw:[买入日: {buy_date if buy_date else '[未知日期]'}  "
+            f"卖出日: {sell_date if sell_date else '[未知日期]'}  "
+            f"口径: {self._trade_window_label()}]"
         )
 
         df_filter_ret = pd.read_csv(subdir / f"{date_str}_filter_ret.csv")
@@ -154,28 +185,28 @@ class ModelReviewHelper:
                 else:
                     print(f"⚠️ {name} 中不存在 'KMID' 列，未做裁剪。")
 
-        next1_date_original_data = self.cli.get_orignal_data(
-            dates={"start": next1_date, "end": next1_date}
+        buy_date_original_data = self.cli.get_orignal_data(
+            dates={"start": buy_date, "end": buy_date}
         )
-        next2_date_original_data = self.cli.get_orignal_data(
-            dates={"start": next2_date, "end": next2_date}
+        sell_date_original_data = self.cli.get_orignal_data(
+            dates={"start": sell_date, "end": sell_date}
         )
 
         # 行情数据为空时跳过（qlib 行情数据还未更新到该日期）
-        if next1_date_original_data.empty or next2_date_original_data.empty:
-            logger.info(f"还不能复盘 {date_str}（次日或第三日行情数据尚未就绪：next1={next1_date}, next2={next2_date}）")
-            self.review_result_string += f"还不能复盘 {date_str}（次日或第三日行情数据尚未就绪：next1={next1_date}, next2={next2_date}）\n"
+        if buy_date_original_data.empty or sell_date_original_data.empty:
+            logger.info(f"还不能复盘 {date_str}（买入日或卖出日行情数据尚未就绪：buy={buy_date}, sell={sell_date}）")
+            self.review_result_string += f"还不能复盘 {date_str}（买入日或卖出日行情数据尚未就绪：buy={buy_date}, sell={sell_date}）\n"
             return
 
         print("分析 df_ret:")
         self.review_result_string += f"### {date_str}_ret.csv\n"
-        df = self._review_csv(df_ret, real_df, next1_date_original_data, next2_date_original_data)
+        df = self._review_csv(df_ret, real_df, buy_date_original_data, sell_date_original_data)
         self.review_result_df[subdir.name] = df
 
         print("分析 df_filter_ret:")
         self.review_result_string += f"### {date_str}_filter_ret.csv\n"
         df = self._review_csv(
-            df_filter_ret, real_df, next1_date_original_data, next2_date_original_data
+            df_filter_ret, real_df, buy_date_original_data, sell_date_original_data
         )
         self.review_result_df_filter[subdir.name] = df
 
@@ -250,11 +281,13 @@ class ModelReviewHelper:
             self.review_result_df[date_str] = df_ret
             self.review_result_df_filter[date_str] = df_filter_ret
 
-    def _calculate_daily_equity(self, df, initial_cash=1.0, fee_rate=0.002):
+    def _calculate_daily_equity(self, df, initial_cash=1.0, fee_rate=None):
         """
         df: 你截图中的表格数据
         fee_rate: 双边交易成本 (佣金+印花税+滑点预估)
         """
+        if fee_rate is None:
+            fee_rate = float(self.kwargs.get("backtest_fee_rate", 0.002))
         # 1. 预处理：去掉没有收益数据的末尾行 (NaN)
         df = df.dropna(subset=['avg_real_label']).copy()
 
@@ -277,6 +310,8 @@ class ModelReviewHelper:
         logger.info(f"backtest handle df {name} top {top_num}")
         df_topk = []
         for date in date_range_list:
+            if date not in df_ret:
+                continue
             df_topk_ret = df_ret[date]
             # 获取df_ret的instrument排序前10名
             topk_instruments = df_topk_ret['instrument'].head(top_num).tolist()
@@ -299,6 +334,9 @@ class ModelReviewHelper:
             row_dict['csi300_real_label'] = csi300_label
             df_topk.append(row_dict)
         df_topk = pd.DataFrame(df_topk)
+        if df_topk.empty:
+            logger.info(f"backtest handle df {name} top {top_num} skipped: no rows")
+            return
         # 计算换手率
         turnover_rates = []
         for i in range(len(df_topk)):
@@ -320,13 +358,26 @@ class ModelReviewHelper:
 
         df_equity = self._calculate_daily_equity(df_topk)
         print(df_equity)
+        summary = {
+            "top_num": top_num,
+            "trade_window": self._trade_window_label(),
+            "avg_real_label": df_equity["avg_real_label"].mean(),
+            "avg_daily_net_ret": df_equity["daily_net_ret"].mean(),
+            "win_rate": (df_equity["daily_net_ret"] > 0).mean(),
+            "avg_turnover_rate": df_equity["turnover_rate"].dropna().mean(),
+            "final_equity": df_equity["strategy_equity"].iloc[-1] if not df_equity.empty else None,
+            "benchmark_equity": df_equity["csi300_equity"].iloc[-1] if not df_equity.empty else None,
+            "max_drawdown": df_equity["drawdown"].min() if not df_equity.empty else None,
+        }
         if name == "ret":
             self.backtest_result_df[top_num] = df_equity
+            self.backtest_summary_df[top_num] = summary
         else:
             self.backtest_result_df_filter[top_num] = df_equity
+            self.backtest_summary_df_filter[top_num] = summary
 
     def _backtest_handle_df(self, df_ret, csi300_df, date_range_list, name):
-        for top_num in top_num_list:
+        for top_num in self._get_top_num_list():
             self._backtest_handle_df_topk(df_ret, csi300_df, date_range_list, name, top_num)
 
 
@@ -337,6 +388,14 @@ class ModelReviewHelper:
             df.to_csv(backtest_dir / f"{name}_ret.csv", index=True)
         for name, df in self.backtest_result_df_filter.items():
             df.to_csv(backtest_dir / f"{name}_filter_ret.csv", index=True)
+        if self.backtest_summary_df:
+            pd.DataFrame.from_dict(self.backtest_summary_df, orient="index").to_csv(
+                backtest_dir / "summary_ret.csv", index=False
+            )
+        if self.backtest_summary_df_filter:
+            pd.DataFrame.from_dict(self.backtest_summary_df_filter, orient="index").to_csv(
+                backtest_dir / "summary_filter_ret.csv", index=False
+            )
 
     # ---------- 回测 对外入口----------
     '''
