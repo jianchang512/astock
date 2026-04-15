@@ -111,13 +111,14 @@ class ModelCLI:
             # 只有当这个实验下有符合条件的记录时才添加
             if mc.rid:
                 ret.append(mc)
-        # 通过 rank_icir 为 rid_weight 分配权重（归一化处理）
-        total_rank_icir = sum(self.rid_rank_icir[rid] for mc in ret for rid in mc.rid)
+        # 通过 rank_icir 的平方为 rid_weight 分配权重（归一化处理）
+        # 使用平方值使高质量模型获得更大权重，减弱低质量模型的影响
+        total_rank_icir_sq = sum(self.rid_rank_icir[rid] ** 2 for mc in ret for rid in mc.rid)
         self.rid_weight = {}
         for mc in ret:
             for rid in mc.rid:
-                if total_rank_icir != 0:
-                    self.rid_weight[rid] = self._round3(self.rid_rank_icir[rid] / total_rank_icir)
+                if total_rank_icir_sq != 0:
+                    self.rid_weight[rid] = self._round3(self.rid_rank_icir[rid] ** 2 / total_rank_icir_sq)
                 else:
                     self.rid_weight[rid] = self._round3(1.0 / (sum(len(mc.rid) for mc in ret) or 1))
         self._log_summary(ret)
@@ -329,7 +330,11 @@ class ModelCLI:
         df = df[(df['STD60'] < 0.05) & (df['STD5'] < 0.06)]
         df = df[df['STD5'] < (df['STD60'] * 2)]
         df = df[(df['ROC10'] > 0.80) & (df['ROC20'] > 0.80) & (df['ROC60'] > 0.80)]
-        return df[df['ROC20'] < 1.30]
+        df = df[df['ROC20'] < 1.30]
+        # 额外过滤：排除短期涨幅过大的股票（过热风险）和短期跌幅过大的股票
+        df = df[df['ROC5'] > 0.85] if 'ROC5' in df.columns else df
+        df = df[df['ROC5'] < 1.20] if 'ROC5' in df.columns else df
+        return df
 
     def get_real_label(self, dates = None, instruments='csi300'):
         if dates is None:

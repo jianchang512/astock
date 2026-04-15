@@ -75,5 +75,6 @@ def test_model_params_consistency():
     # 针对你硬件优化的参数校验
     de_config = get_model_config("DoubleEnsemble")
     # 验证 sample_ratios 和 sub_weights 的数量匹配逻辑
-    assert len(de_config["kwargs"]["sample_ratios"]) == 5
-    assert len(de_config["kwargs"]["sub_weights"]) == 6
+    # num_models=8, sample_ratios 有 num_models-1=7 个, sub_weights 有 num_models=8 个
+    assert len(de_config["kwargs"]["sample_ratios"]) == 7
+    assert len(de_config["kwargs"]["sub_weights"]) == 8

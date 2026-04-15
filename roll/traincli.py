@@ -185,7 +185,7 @@ class TrainCLI:
     def start_custom(self):
         self.kwargs["rolling_type"] = "custom"
         tasks = []
-        for i in range(1, 6):
+        for i in range(1, 7):
             segments = generate_qlib_segments(months_total=12 * i)
             _task = copy.deepcopy(self.task_config)
             _task["dataset"]["kwargs"]["segments"] = segments
