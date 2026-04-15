@@ -29,6 +29,11 @@ class RollingTrader:
             "selection_volatility_quantile": 0.6,
             "selection_overheat_quantile": 0.7,
             "selection_fallback_count": 10,
+            "selection_weight_score": 1.0,
+            "selection_weight_pos_ratio": 0.35,
+            "selection_weight_momentum": 0.20,
+            "selection_weight_volatility": 0.25,
+            "selection_weight_overheat": 0.15,
             "recency_halflife_days": 180,
             "backtest_fee_rate": 0.002,
         }

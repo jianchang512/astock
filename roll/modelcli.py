@@ -405,6 +405,11 @@ class ModelCLI:
         volatility_quantile = float(self.kwargs.get("selection_volatility_quantile", 0.6))
         overheat_quantile = float(self.kwargs.get("selection_overheat_quantile", 0.7))
         fallback_count = max(int(self.kwargs.get("selection_fallback_count", 10)), 1)
+        weight_score = float(self.kwargs.get("selection_weight_score", 1.0))
+        weight_pos_ratio = float(self.kwargs.get("selection_weight_pos_ratio", 0.35))
+        weight_momentum = float(self.kwargs.get("selection_weight_momentum", 0.20))
+        weight_volatility = float(self.kwargs.get("selection_weight_volatility", 0.25))
+        weight_overheat = float(self.kwargs.get("selection_weight_overheat", 0.15))
 
         score_z = self._zscore(ranked["avg_score"])
         pos_ratio_z = self._zscore(ranked["pos_ratio"]) if "pos_ratio" in ranked.columns else 0.0
@@ -428,12 +433,13 @@ class ModelCLI:
             overheat_signal = pd.Series(0.0, index=ranked.index)
         overheat_z = self._zscore(overheat_signal)
 
+        # 通过可配置的多信号权重做二次排序，兼顾主分数、模型一致性、趋势与风险约束
         ranked["selection_score"] = (
-            score_z
-            + 0.35 * pos_ratio_z
-            + 0.20 * momentum_z
-            - 0.25 * volatility_z
-            - 0.15 * overheat_z
+            weight_score * score_z
+            + weight_pos_ratio * pos_ratio_z
+            + weight_momentum * momentum_z
+            - weight_volatility * volatility_z
+            - weight_overheat * overheat_z
         )
 
         keep_mask = ranked["avg_score"].ge(min_score)
@@ -446,7 +452,10 @@ class ModelCLI:
 
         filtered = ranked[keep_mask].copy()
         if filtered.empty:
-            filtered = ranked.sort_values(["selection_score", "avg_score"], ascending=False).head(fallback_count).copy()
+            fallback_pool = ranked[ranked["avg_score"] > 0].copy()
+            if fallback_pool.empty:
+                fallback_pool = ranked
+            filtered = fallback_pool.sort_values(["selection_score", "avg_score"], ascending=False).head(fallback_count).copy()
 
         return filtered.sort_values(["selection_score", "avg_score"], ascending=False)
 

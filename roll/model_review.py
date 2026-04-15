@@ -47,7 +47,7 @@ class ModelReviewHelper:
 
     def _trade_window_label(self):
         buy_offset, sell_offset = self.cli.get_trade_offsets()
-        return f"T+{buy_offset}买T+{sell_offset}卖" if buy_offset else f"T日买T+{sell_offset}日卖"
+        return f"T+{buy_offset}买T+{sell_offset}卖"
 
     # ---------- CSV 单日回测 ----------
     def _review_csv(self, df, real_df, buy_df, sell_df):
@@ -88,7 +88,7 @@ class ModelReviewHelper:
             "平均收益",
             "正收益占比",
             "方向命中率",
-            "TopK-全市场收益差",
+            "TopK-预测池收益差",
             "扣费后估算收益",
         ]
 
