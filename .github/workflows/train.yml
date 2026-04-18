@@ -78,7 +78,7 @@ jobs:
         if: env.NEED_TRAIN_RESULT == 'False'
         run: |
           echo "不需要训练，直接中断 workflow。"
-          exit 0
+          exit 1
 
       - name: delete old model pkl
         run: |
