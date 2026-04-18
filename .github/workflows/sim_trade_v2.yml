@@ -14,10 +14,10 @@ on:
         default: '1'
 
   # 也可在原版 Sim Trade 完成后自动触发，方便对比
-  workflow_run:
-    workflows: ["Sim Trade"]
-    types:
-      - completed
+  #workflow_run:
+  #  workflows: ["Sim Trade"]
+  #  types:
+  #    - completed
 
 permissions:
   contents: write
