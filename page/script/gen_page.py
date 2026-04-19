@@ -39,7 +39,7 @@ def csv_to_markdown_table2(csv_path: Path) -> str:
 
 
 
-def csv_to_markdown_table(csv_path: Path) -> str:
+def csv_to_markdown_table000(csv_path: Path) -> str:
     """将 CSV 转为 Markdown 表格"""
     with open(csv_path, encoding='utf-8', errors='ignore') as f:
         reader = csv.reader(f)
@@ -66,6 +66,68 @@ def csv_to_markdown_table(csv_path: Path) -> str:
         lines.append('| ' + ' | '.join(str(c).replace('|', '\\|') for c in row) + ' |')
     return '\n'.join(lines)
 
+
+
+
+
+def csv_to_markdown_table(csv_path: Path) -> str:
+    """将 CSV 转为 Markdown 表格，并按 avg_score 倒序排列"""
+    with open(csv_path, encoding='utf-8', errors='ignore') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+        
+    if not rows or len(rows) < 2: # 如果为空或者只有表头
+        return ''
+        
+    # --- 新增：排序逻辑开始 ---
+    # 动态查找 avg_score 的列索引（增加代码健壮性），如果没有找到则默认使用索引 2
+    try:
+        avg_score_idx = rows[0].index('avg_score')
+    except ValueError:
+        avg_score_idx = 2 
+
+    # 将数据分为表头和数据行
+    header = rows[0]
+    data_rows = rows[1:]
+
+    # 定义排序的 key 函数
+    def sort_key(row):
+        try:
+            # 尝试将该列转换为浮点数用于正确的数值比较
+            return float(row[avg_score_idx])
+        except (ValueError, IndexError):
+            # 如果遇到空值或无法转换为数字的值，将其排在最下面
+            return -float('inf') 
+
+    # 对数据行进行倒序排序
+    data_rows.sort(key=sort_key, reverse=True)
+
+    # 将表头和排序后的数据重新组合
+    rows = [header] + data_rows
+    # --- 新增：排序逻辑结束 ---
+
+    lines =[]
+    # 表头替换
+    if csv_path.name.endswith('_ret.csv'):
+        rows[0][0]=''
+        rows[0][1]='股票代码'
+        rows[0][2]='预测涨幅'  # 对应 avg_score
+        rows[0][3]='看涨概率'
+        rows[0][4]='用于复盘'
+        rows[0][5]='预测误差'
+        rows[0][6]='预测误差(绝对值)'
+        
+    lines.append('| ' + ' | '.join(rows[0]) + ' |')
+    lines.append('| ' + ' | '.join('---' for _ in rows[0]) + ' |')
+    
+    for row in rows[1:]:
+        # 补齐列数
+        while len(row) < len(rows[0]):
+            row.append('')
+        row = row[:len(rows[0])]
+        lines.append('| ' + ' | '.join(str(c).replace('|', '\\|') for c in row) + ' |')
+        
+    return '\n'.join(lines)
 
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
