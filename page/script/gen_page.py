@@ -17,6 +17,27 @@ DATA_DIR = PROJECT_ROOT / 'qlib_score_csv'
 DOCS_DIR = PAGE_ROOT / 'docs'
 BACKTEST_DIR = PROJECT_ROOT / 'backtest_csv'
 
+def csv_to_markdown_table2(csv_path: Path) -> str:
+    """将 CSV 转为 Markdown 表格"""
+    with open(csv_path, encoding='utf-8', errors='ignore') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+    if not rows:
+        return ''
+    lines = []
+    # 表头
+
+    lines.append('| ' + ' | '.join(rows[0]) + ' |')
+    lines.append('| ' + ' | '.join('---' for _ in rows[0]) + ' |')
+    for row in rows[1:]:
+        # 补齐列数
+        while len(row) < len(rows[0]):
+            row.append('')
+        row = row[:len(rows[0])]
+        lines.append('| ' + ' | '.join(str(c).replace('|', '\\|') for c in row) + ' |')
+    return '\n'.join(lines)
+
+
 
 def csv_to_markdown_table(csv_path: Path) -> str:
     """将 CSV 转为 Markdown 表格"""
@@ -130,7 +151,8 @@ def generate_pages() -> None:
     if not DATA_DIR.exists():
         print(f'错误: 数据目录不存在 {DATA_DIR}')
         return
-
+    table = csv_to_markdown_table2(f'{PROJECT_ROOT}/tests/sim_trade_result.csv')
+    (DOCS_DIR / 'moni.md').write_text(table, encoding='utf-8')
     # 清空 docs（保留 .vitepress、pages 和 public 用户资源）
     ensure_dir(DOCS_DIR)
     preserve = {'.vitepress', 'pages', 'public'}
