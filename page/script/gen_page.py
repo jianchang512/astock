@@ -152,6 +152,7 @@ def generate_pages() -> None:
         print(f'错误: 数据目录不存在 {DATA_DIR}')
         return
     table = csv_to_markdown_table2(f'{PROJECT_ROOT}/tests/sim_trade_result.csv')
+    print(f'########################{PROJECT_ROOT=}')
     (DOCS_DIR / 'moni.md').write_text(table, encoding='utf-8')
     # 清空 docs（保留 .vitepress、pages 和 public 用户资源）
     ensure_dir(DOCS_DIR)
