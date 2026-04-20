@@ -439,7 +439,7 @@ class ModelReviewHelper:
 
         print(date_range_list)
 
-        self._backtest_handle_df(self.review_result_df, csi300_df, date_range_list, "ret")
+        #self._backtest_handle_df(self.review_result_df, csi300_df, date_range_list, "ret")
         self._backtest_handle_df(self.review_result_df_filter, csi300_df, date_range_list, "filter_ret")
 
         logger.info("backtest result:")
