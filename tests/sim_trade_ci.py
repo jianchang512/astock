@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 模拟交易 CI 版 —— 最终增强版
-================================
+===============================
 
 目标：
 - 仅以 qlib_score/qlib_score_csv 中实际存在的 *filter_ret.csv 为准
@@ -16,11 +16,9 @@
 - 若某只股票某天没有行情，则该股票跳过
 - 不依赖 roll/ 模块，适合 CI / GitHub Actions
 
-说明：
-- “连续交易日”完全由现有 CSV 日期序列定义
-- 所以 2026-03-12 的下一个日期就是排序后的下一个 CSV 日期
-  即使中间缺了周末/节假日，也视为连续
-- 同一天多个预测目录时，按目录名排序，后者覆盖前者
+本版本增强：
+- 一次回测同时输出 top1 / top3 / top5 / top10 四套结果
+- 额外输出 top_n 对比汇总表
 """
 
 from __future__ import annotations
@@ -77,6 +75,7 @@ def init_qlib(provider_uri: str):
         return
     import qlib
     from qlib.constant import REG_CN
+
     qlib.init(provider_uri=provider_uri, region=REG_CN)
     _qlib_initialized = True
     print(f"qlib 已初始化，数据源: {provider_uri}")
@@ -210,7 +209,7 @@ def backtest_final(
 ):
     """
     按“实际存在的 csv 日期顺序”进行滚动。
-    连续性由 CSV 日期顺序定义，不依赖交易日历。
+    连续性由 CSV 日期顺序定义���不依赖交易日历。
     """
     predict_dates = list(score_tables.keys())
     if len(predict_dates) < 2:
@@ -358,49 +357,12 @@ def backtest_final(
     return summary_rows, detail_rows
 
 
-# ──────────────────────────────────────────────
-# 主入口
-# ──────────────────────────────────────────────
-
-def main(
-    provider_uri: str = "~/.qlib/qlib_data/cn_data",
-    qlib_score_dir: str = "./qlib_score_csv",
-    top_n: int = 3,
-    out: str = "./tests/sim_trade_result.csv",
-    detail_out: str = "./tests/sim_trade_detail.csv",
+def write_outputs(
+    summary_rows: list[dict],
+    detail_rows: list[dict],
+    out_path: Path,
+    detail_path: Path,
 ):
-    """
-    最终增强版：
-    - 以实际存在的 filter_ret.csv 日期正序作为交易主轴
-    - 同一天多个预测目录只取后一个
-    - 按 CSV 日期顺序视为连续交易日
-    """
-    provider_uri = str(Path(provider_uri).expanduser())
-    score_dir = Path(qlib_score_dir)
-    if not score_dir.is_absolute():
-        score_dir = Path.cwd() / score_dir
-
-    print(f"初始化 qlib... (provider_uri={provider_uri})")
-    init_qlib(provider_uri)
-
-    print(f"预加载预测表: {score_dir}")
-    score_tables = load_all_filter_tables(score_dir)
-    if not score_tables:
-        print("未找到任何 *filter_ret.csv，退出。")
-        return
-
-    print(f"共加载 {len(score_tables)} 个预测日期的数据，开始最终增强版滚动回测...")
-
-    summary_rows, detail_rows = backtest_final(score_tables, top_n=top_n)
-    if not summary_rows:
-        print("没有生成任何结果。")
-        return
-
-    out_path = Path(out)
-    detail_path = Path(detail_out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    detail_path.parent.mkdir(parents=True, exist_ok=True)
-
     df_summary = pd.DataFrame(summary_rows, columns=[
         "交易日期", "预测日期", "买入股票", "买入股票数", "买入总额",
         "卖出股票", "卖出股票数", "卖出总额",
@@ -422,15 +384,90 @@ def main(
     win_pct = f"{win_days / sell_days * 100:.1f}%" if sell_days else "N/A"
     avg_net = f"{total_net / sell_days:.2f}" if sell_days else "N/A"
 
-    print(
-        f"\n=== 模拟交易统计（最终增强版）===\n"
-        f"  交易天数:  {total_days}\n"
-        f"  含卖出天数: {sell_days}\n"
-        f"  盈利天数:  {win_days} ({win_pct} of sell days)\n"
-        f"  累计净利润: {total_net:.2f}\n"
-        f"  平均日净利润: {avg_net}\n"
-        f"================================\n"
-    )
+    return {
+        "交易天数": total_days,
+        "含卖出天数": sell_days,
+        "盈利天数": win_days,
+        "胜率": win_pct,
+        "累计净利润": round(total_net, 2),
+        "平均日净利润": avg_net,
+    }
+
+
+# ──────────────────────────────────────────────
+# 主入口
+# ──────────────────────────────────────────────
+
+def main(
+    provider_uri: str = "~/.qlib/qlib_data/cn_data",
+    qlib_score_dir: str = "./qlib_score_csv",
+    out: str = "./tests/sim_trade_result.csv",
+    detail_out: str = "./tests/sim_trade_detail.csv",
+):
+    """
+    最终增强版：
+    - 以实际存在的 filter_ret.csv 日期正序作为交易主轴
+    - 同一天多个预测目录只取后一个
+    - 按 CSV 日期顺序视为连续交易日
+    - 一次输出 top1 / top3 / top5 / top10
+    """
+    provider_uri = str(Path(provider_uri).expanduser())
+    score_dir = Path(qlib_score_dir)
+    if not score_dir.is_absolute():
+        score_dir = Path.cwd() / score_dir
+
+    print(f"初始化 qlib... (provider_uri={provider_uri})")
+    init_qlib(provider_uri)
+
+    print(f"预加载预测表: {score_dir}")
+    score_tables = load_all_filter_tables(score_dir)
+    if not score_tables:
+        print("未找到任何 *filter_ret.csv，退出。")
+        return
+
+    print(f"共加载 {len(score_tables)} 个预测日期的数据，开始最终增强版滚动回测...")
+
+    top_n_list = [1, 3, 5, 10]
+    out_path = Path(out)
+    detail_path = Path(detail_out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    detail_path.parent.mkdir(parents=True, exist_ok=True)
+
+    compare_rows: list[dict] = []
+
+    for n in top_n_list:
+        print(f"\n========== 开始回测 top{n} ==========")
+        summary_rows, detail_rows = backtest_final(score_tables, top_n=n)
+        if not summary_rows:
+            print(f"top{n} 没有生成任何结果。")
+            continue
+
+        result_path = out_path.with_name(f"{out_path.stem}_top{n}{out_path.suffix}")
+        detail_result_path = detail_path.with_name(f"{detail_path.stem}_top{n}{detail_path.suffix}")
+
+        stats = write_outputs(summary_rows, detail_rows, result_path, detail_result_path)
+        stats["top_n"] = n
+        compare_rows.append(stats)
+
+        print(
+            f"\n=== 模拟交易统计 top{n} ===\n"
+            f"  交易天数:  {stats['交易天数']}\n"
+            f"  含卖出天数: {stats['含卖出天数']}\n"
+            f"  盈利天数:  {stats['盈利天数']} ({stats['胜率']} of sell days)\n"
+            f"  累计净利润: {stats['累计净利润']}\n"
+            f"  平均日净利润: {stats['平均日净利润']}\n"
+            f"===========================\n"
+        )
+
+    if compare_rows:
+        compare_df = pd.DataFrame(compare_rows, columns=[
+            "top_n", "交易天数", "含卖出天数", "盈利天数", "胜率",
+            "累计净利润", "平均日净利润"
+        ])
+        compare_path = out_path.with_name(f"{out_path.stem}_compare{out_path.suffix}")
+        compare_df.to_csv(compare_path, index=False, encoding="utf-8-sig")
+        print(f"\nTopN 对比汇总已保存: {compare_path}")
+        print(compare_df.to_string(index=False))
 
 
 if __name__ == "__main__":

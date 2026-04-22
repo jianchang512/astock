@@ -92,11 +92,10 @@ jobs:
       - name: 运行模拟交易
         run: |
           python tests/sim_trade_ci.py \
-            --provider_uri=~/.qlib/qlib_data/cn_data \
-            --qlib_score_dir=./qlib_score_csv \
-            --out=./tests/sim_trade_result.csv \
-            --detail_out=./tests/sim_trade_detail.csv \
-            --top_n=3
+          --provider_uri=~/.qlib/qlib_data/cn_data \
+          --qlib_score_dir=./qlib_score_csv \
+          --out=./tests/sim_trade_result.csv \
+          --detail_out=./tests/sim_trade_detail.csv
 
       # ── 7. 提交结果回 main 分支 ──
       - name: 提交模拟交易结果
@@ -104,9 +103,12 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add -f tests/sim_trade_result.csv tests/sim_trade_detail.csv \
-                     tests/sim_trade_result_t3.csv tests/sim_trade_detail_t3.csv \
-                     tests/sim_trade_result_t5.csv tests/sim_trade_detail_t5.csv 2>/dev/null || true
+          git add -f \
+            tests/sim_trade_result_top1.csv tests/sim_trade_detail_top1.csv \
+            tests/sim_trade_result_top3.csv tests/sim_trade_detail_top3.csv \
+            tests/sim_trade_result_top5.csv tests/sim_trade_detail_top5.csv \
+            tests/sim_trade_result_top10.csv tests/sim_trade_detail_top10.csv \
+            tests/sim_trade_result_compare.csv 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "模拟交易结果无变化，跳过推送。"
