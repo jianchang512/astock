@@ -6,7 +6,7 @@ on:
 
   # 也可在 Review 完成后自动触发
   workflow_run:
-    workflows: ["部署 VitePress 网页"]
+    workflows: ["Review"]
     types:
       - completed
 
