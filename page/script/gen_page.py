@@ -242,7 +242,7 @@ def csv_to_md_sim():
             with open(jsfile, 'w', encoding='utf-8') as f:
                 f.write(jscode)
             (DOCS_DIR / '.vitepress/dist').mkdir(exist_ok=True)
-            shutil.copy2(jsfile,DOCS_DIR / f'.vitepress/dist/{jsfile}')
+            shutil.copy2(jsfile,DOCS_DIR / f'.vitepress/dist/{csv_path.stem}.html')
         
         with open(out_md_path, 'w', encoding='utf-8') as f:
             f.write(md_content)
