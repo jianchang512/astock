@@ -183,8 +183,27 @@ def load_all_filter_tables(score_dir: Path) -> dict[str, pd.DataFrame]:
 
     return dict(sorted(tables.items(), key=lambda kv: kv[0]))
 
-
 def select_trade_candidates(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    if df.empty or top_n <= 0:
+        return df.iloc[0:0].copy()
+
+    ranked = df.copy()
+    # 1. 增加对 pos_ratio 字段的非空过滤
+    ranked = ranked.dropna(subset=["instrument", "avg_score", "pos_ratio"]).copy()
+    
+    # 2. 转换数据类型，确保 pos_ratio 也是数值类型
+    ranked["avg_score"] = pd.to_numeric(ranked["avg_score"], errors="coerce")
+    ranked["pos_ratio"] = pd.to_numeric(ranked["pos_ratio"], errors="coerce")
+    
+    ranked = ranked.dropna(subset=["avg_score", "pos_ratio"])
+    if ranked.empty:
+        return ranked
+
+    # 3. 修改排序规则：先按 pos_ratio 倒序，再按 avg_score 倒序
+    ranked = ranked.sort_values(by=["pos_ratio", "avg_score"], ascending=[False, False])
+    return ranked.head(top_n)
+    
+def select_trade_candidates00(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
     if df.empty or top_n <= 0:
         return df.iloc[0:0].copy()
 

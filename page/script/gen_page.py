@@ -68,9 +68,80 @@ def csv_to_markdown_table000(csv_path: Path) -> str:
 
 
 
-
-
 def csv_to_markdown_table(csv_path: Path) -> str:
+    """将 CSV 转为 Markdown 表格，并先按 pos_ratio 倒序，同值按 avg_score 倒序排列"""
+    with open(csv_path, encoding='utf-8', errors='ignore') as f:
+        reader = csv.reader(f)
+        rows = list(reader)
+        
+    if not rows or len(rows) < 2: # 如果为空或者只有表头
+        return ''
+        
+    # --- 新增：排序逻辑开始 ---
+    # 动态查找 avg_score 的列索引（增加代码健壮性），如果没有找到则默认使用索引 2
+    try:
+        avg_score_idx = rows[0].index('avg_score')
+    except ValueError:
+        avg_score_idx = 2 
+        
+    # 动态查找 pos_ratio 的列索引，如果没有找到则默认使用索引 3
+    try:
+        pos_ratio_idx = rows[0].index('pos_ratio')
+    except ValueError:
+        pos_ratio_idx = 3
+
+    # 将数据分为表头和数据行
+    header = rows[0]
+    data_rows = rows[1:]
+
+    # 定义排序的 key 函数
+    def sort_key(row):
+        # 1. 提取 pos_ratio（第一排序维度）
+        try:
+            ratio_val = float(row[pos_ratio_idx]) if pos_ratio_idx < len(row) else -float('inf')
+        except (ValueError, IndexError):
+            ratio_val = -float('inf')
+            
+        # 2. 提取 avg_score（第二排序维度）
+        try:
+            score_val = float(row[avg_score_idx]) if avg_score_idx < len(row) else -float('inf')
+        except (ValueError, IndexError):
+            score_val = -float('inf') 
+
+        # 返回元组，外层 sort(reverse=True) 会先根据 ratio_val 倒序，同值再根据 score_val 倒序
+        return (ratio_val, score_val)
+
+    # 对数据行进行多重倒序排序
+    data_rows.sort(key=sort_key, reverse=True)
+
+    # 将表头和排序后的数据重新组合
+    rows = [header] + data_rows
+    # --- 新增：排序逻辑结束 ---
+
+    lines =[]
+    # 表头替换
+    if csv_path.name.endswith('_ret.csv'):
+        rows[0][0]=''
+        rows[0][1]='股票代码'
+        rows[0][2]='预测涨幅'  # 对应 avg_score
+        rows[0][3]='看涨概率'  # 对应 pos_ratio
+        rows[0][4]='用于复盘'
+        rows[0][5]='预测误差'
+        rows[0][6]='预测误差(绝对值)'
+        
+    lines.append('| ' + ' | '.join(rows[0]) + ' |')
+    lines.append('| ' + ' | '.join('---' for _ in rows[0]) + ' |')
+    
+    for row in rows[1:]:
+        # 补齐列数
+        while len(row) < len(rows[0]):
+            row.append('')
+        row = row[:len(rows[0])]
+        lines.append('| ' + ' | '.join(str(c).replace('|', '\\|') for c in row) + ' |')
+        
+    return '\n'.join(lines)
+
+def csv_to_markdown_table0423(csv_path: Path) -> str:
     """将 CSV 转为 Markdown 表格，并按 avg_score 倒序排列"""
     with open(csv_path, encoding='utf-8', errors='ignore') as f:
         reader = csv.reader(f)
