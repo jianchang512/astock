@@ -800,5 +800,5 @@ def update_sidebar(items: list) -> None:
 
 
 if __name__ == '__main__':
-    generate_pages()
     csv_to_md_sim()
+    generate_pages()
