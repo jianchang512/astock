@@ -39,6 +39,149 @@ def csv_to_markdown_table2(csv_path: Path) -> str:
 
 
 
+
+def generate_echarts_script(csv_path: str | Path) -> str:
+    """
+    读取回测结果 CSV 文件，生成 ECharts 变化趋势图的 HTML/JS 代码段。
+    
+    :param csv_path: CSV 文件的绝对路径
+    :return: 包含 CDN 引用、DOM 容器以及渲染逻辑的完整字符串
+    """
+    file_path = Path(csv_path)
+    if not file_path.exists():
+        return f"<!-- 错误: 找不到文件 {file_path} -->"
+
+    try:
+        df = pd.read_csv(file_path)
+    except Exception as e:
+        return f"<!-- 读取 CSV 失败: {e} -->"
+
+    # 确定列名 (兼容可能的列名变体)
+    date_col = "交易日期"
+    profit_col = "累计净利润"
+    return_col = "收益率%" if "收益率%" in df.columns else "收益率"
+
+    # 校验必要列是否存在
+    missing_cols = [col for col in[date_col, profit_col, return_col] if col not in df.columns]
+    if missing_cols:
+        return f"<!-- 数据列缺失: {', '.join(missing_cols)} -->"
+
+    # 过滤空值，提取数据转为列表
+    df = df.dropna(subset=[date_col, return_col, profit_col])
+    
+    dates = df[date_col].tolist()
+    returns = df[return_col].tolist()
+    profits = df[profit_col].tolist()
+
+    # 将 Python 列表转为 JSON 字符串，以便直接注入到 JavaScript 中
+    dates_js = json.dumps(dates)
+    returns_js = json.dumps(returns)
+    profits_js = json.dumps(profits)
+
+    # 构造 HTML 和 JS 脚本段
+    # 注意：严格使用您指定的 ECharts 6.0.0 CDN
+    html_template = f"""
+<!-- 引入 ECharts -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
+
+<!-- 图表容器 -->
+<div id="chart-return" style="width: 100%; height: 400px; margin-bottom: 40px;"></div>
+<div id="chart-profit" style="width: 100%; height: 400px;"></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {{
+    // === 图表1：收益率变化趋势 ===
+    var chartReturn = echarts.init(document.getElementById('chart-return'));
+    var optionReturn = {{
+        title: {{
+            text: '日收益率变化趋势',
+            left: 'center'
+        }},
+        tooltip: {{
+            trigger: 'axis',
+            formatter: '{{b}}<br/>收益率: {{c}}%'
+        }},
+        xAxis: {{
+            type: 'category',
+            data: {dates_js},
+            boundaryGap: false
+        }},
+        yAxis: {{
+            type: 'value',
+            name: '收益率 (%)',
+            axisLabel: {{ formatter: '{{value}}%' }}
+        }},
+        dataZoom:[
+            {{ type: 'inside', start: 0, end: 100 }},
+            {{ type: 'slider', start: 0, end: 100 }}
+        ],
+        series:[{{
+            data: {returns_js},
+            type: 'line',
+            smooth: true,
+            itemStyle: {{ color: '#ee6666' }},
+            markLine: {{
+                data:[{{ type: 'average', name: '平均值' }}, {{ yAxis: 0, name: '零刻度' }}],
+                label: {{ formatter: '{{b}}: {{c}}' }}
+            }}
+        }}]
+    }};
+    chartReturn.setOption(optionReturn);
+
+    // === 图表2：累计净利润变化趋势 ===
+    var chartProfit = echarts.init(document.getElementById('chart-profit'));
+    var optionProfit = {{
+        title: {{
+            text: '累计净利润变化趋势',
+            left: 'center'
+        }},
+        tooltip: {{
+            trigger: 'axis',
+            formatter: '{{b}}<br/>累计净利润: ¥{{c}}'
+        }},
+        xAxis: {{
+            type: 'category',
+            data: {dates_js},
+            boundaryGap: false
+        }},
+        yAxis: {{
+            type: 'value',
+            name: '累计净利润 (元)',
+            axisLabel: {{ formatter: '¥{{value}}' }}
+        }},
+        dataZoom:[
+            {{ type: 'inside', start: 0, end: 100 }},
+            {{ type: 'slider', start: 0, end: 100 }}
+        ],
+        series:[{{
+            data: {profits_js},
+            type: 'line',
+            smooth: true,
+            itemStyle: {{ color: '#5470c6' }},
+            areaStyle: {{
+                opacity: 0.3,
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1,[
+                    {{offset: 0, color: 'rgba(84, 112, 198, 0.8)'}},
+                    {{offset: 1, color: 'rgba(84, 112, 198, 0.1)'}}
+                ])
+            }},
+            markLine: {{
+                data:[{{ yAxis: 0, name: '盈亏平衡点' }}]
+            }}
+        }}]
+    }};
+    chartProfit.setOption(optionProfit);
+
+    // 监听窗口大小变化自动缩放图表
+    window.addEventListener('resize', function() {{
+        chartReturn.resize();
+        chartProfit.resize();
+    }});
+}});
+</script>
+"""
+    return html_template
+
 def csv_to_md_sim():
     
     csv_map = {
@@ -91,6 +234,10 @@ def csv_to_md_sim():
         # 6. 确认输出目录并写入
         out_md_path = DOCS_DIR / f'pages/guide/{csv_path.stem}.md'
         out_md_path.parent.mkdir(parents=True, exist_ok=True)  # 确保 guide 目录存在
+        
+        if csvname.startswith('sim_trade_result_top'):
+            jscode=generate_echarts_script(csv_path)
+            md_content+=f"\n{jscode}"
         
         with open(out_md_path, 'w', encoding='utf-8') as f:
             f.write(md_content)
