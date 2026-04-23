@@ -246,7 +246,7 @@ def csv_to_md_sim():
             md_content+=f"""<iframe style="width:800px;height:1000px;overflow:hidden" src="https://jianchang512.github.io/astock/{csv_path.stem}.html"></iframe>"""
         
         with open(out_md_path, 'w', encoding='utf-8') as f:
-            f.write(f"""---\ntitle: {title}\n---\n"""+md_content)
+            f.write(md_content)
             
         print(f"✅ 成功生成 Markdown 文档: {out_md_path}")
 
