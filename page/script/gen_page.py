@@ -185,17 +185,17 @@ document.addEventListener("DOMContentLoaded", function() {{
 def csv_to_md_sim():
     
     csv_map = {
-        "sim_trade_result_top1.csv": "仅买卖前 1 股票各500股",
-        "sim_trade_result_top3.csv": "买卖前 3 股票各500股",
-        "sim_trade_result_top5.csv": "买卖前 5 股票各500股",
-        "sim_trade_result_top10.csv": "买卖前 10 股票各500股",
-        "sim_trade_result_compare.csv": "不同买卖方式收益对比各500股",
+        "sim_trade_result_top1.csv": "[500股]前 1 只股票",
+        "sim_trade_result_top3.csv": "[500股]前 3 只股票",
+        "sim_trade_result_top5.csv": "[500股]前 5 只股票",
+        "sim_trade_result_top10.csv": "[500股]前 10 只股票",
+        "sim_trade_result_compare.csv": "[500股]不同方式收益对比",
         
-        "sim_trade_result_top1-1000.csv": "仅买卖前 1 股票各1000股",
-        "sim_trade_result_top3-1000.csv": "买卖前 3 股票各1000股",
-        "sim_trade_result_top5-1000.csv": "买卖前 5 股票各1000股",
-        "sim_trade_result_top10-1000.csv": "买卖前 10 股票各1000股",
-        "sim_trade_result_compare-1000.csv": "不同买卖方式收益对比各1000股",
+        "sim_trade_result_top1-1000.csv": "[1000股]前 1 只股票",
+        "sim_trade_result_top3-1000.csv": "[1000股]前 3 只股票",
+        "sim_trade_result_top5-1000.csv": "[1000股]前 5 只股票",
+        "sim_trade_result_top10-1000.csv": "[1000股]前 10 只股票",
+        "sim_trade_result_compare-1000.csv": "[1000股]不同方式收益对比",
     }
     for csvname,title in csv_map.items():
         csv_path=Path(f'{PROJECT_ROOT}/tests/{csvname}')
@@ -249,28 +249,8 @@ def csv_to_md_sim():
             f.write(f"""---\ntitle: {title}\n---\n"""+md_content)
             
         print(f"✅ 成功生成 Markdown 文档: {out_md_path}")
-    with open(DOCS_DIR / f'pages/guide/查看回测模拟.md', 'w', encoding='utf-8') as f:
-        f.write("""---
-title: 查看回测和模拟数据
----
-
-- [购买前1只 500 股](sim_trade_result_top1)
-- [购买前3只各 500 股](sim_trade_result_top3)
-- [购买前5只各 500 股](sim_trade_result_top5)
-- [购买前10只各 500 股](sim_trade_result_top10)
-- [综合对比](sim_trade_result_compare)
 
 
-----
-----
-
-- [购买前1只 1000 股](sim_trade_result_top1-1000)
-- [购买前3只各 1000 股](sim_trade_result_top3-1000)
-- [购买前5只各 1000 股](sim_trade_result_top5-1000)
-- [购买前10只各 1000 股](sim_trade_result_top10-1000)
-- [综合对比](sim_trade_result_compare-1000)
-"""
-        )
 
 
 def csv_to_markdown_table000(csv_path: Path) -> str:
