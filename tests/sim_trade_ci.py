@@ -487,10 +487,13 @@ def main(
         )
 
     if compare_rows:
+        
+        
         compare_df = pd.DataFrame(compare_rows, columns=[
             "top_n", "交易天数", "含卖出天数", "盈利天数", "胜率",
-            "累计净利润", "平均日净利润"
+            "累计净利润", "平均日净利润", "整体总收益率"
         ])
+
         compare_path = out_path.with_name(f"{out_path.stem}_compare{out_path.suffix}")
         compare_df.to_csv(compare_path, index=False, encoding="utf-8-sig")
         print(f"\nTopN 对比汇总已保存: {compare_path}")
