@@ -9,7 +9,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-
+import pandas as pd
 # 路径配置：page/script/gen_page.py -> 项目根目录
 PAGE_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = PAGE_ROOT.parent
@@ -40,7 +40,7 @@ def csv_to_markdown_table2(csv_path: Path) -> str:
 
 
 def csv_to_md_sim():
-    import pandas as pd
+    
     csv_map = {
         "sim_trade_result_top1.csv": "仅买卖排名第一的股票1000股",
         "sim_trade_result_top3.csv": "买卖排名前3的股票各1000股",
