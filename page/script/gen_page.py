@@ -39,6 +39,59 @@ def csv_to_markdown_table2(csv_path: Path) -> str:
 
 
 
+def csv_to_md_sim():
+    import pandas as pd
+    csv_map = {
+        "sim_trade_result_top1.csv": "仅买卖排名第一的股票1000股",
+        "sim_trade_result_top3.csv": "买卖排名前3的股票各1000股",
+        "sim_trade_result_top5.csv": "买卖排名前5的股票各1000股",
+        "sim_trade_result_top10.csv": "买卖排名前10的股票各1000股",
+        "sim_trade_result_compare.csv": "不同买卖方式收益对比"
+    }
+    for csvname,title in csv_map.items()
+        csv_path=Path(f'{PROJECT_ROOT}/tests/{csvname}')
+    
+            
+        # 2. 检查源 CSV 是否存在
+        source_file = Path(csv_path)
+        if not source_file.exists():
+            print(f"⚠️ 找不到文件，跳过生成: {source_file}")
+            return
+            
+        # 3. 读取 CSV 文件（处理 NaN 防止出现难看的字符串）
+        try:
+            df = pd.read_csv(source_file)
+            df = df.fillna("")  # 将空缺值替换为空字符串
+        except Exception as e:
+            print(f"❌ 读取 CSV 失败: {source_file} \n错误信息: {e}")
+            return
+
+        # 4. 手动生成 Markdown 表格（不依赖外部 tabulate 库，适合 CI 运行）
+        headers = df.columns.tolist()
+        header_row = "| " + " | ".join(str(h) for h in headers) + " |"
+        separator_row = "| " + " | ".join("---" for _ in headers) + " |"
+        
+        data_rows =[]
+        for _, row in df.iterrows():
+            # 将每行的数据转为字符串，并用 | 拼接
+            row_str = "| " + " | ".join(str(val) for val in row.values) + " |"
+            data_rows.append(row_str)
+            
+        md_table = "\n".join([header_row, separator_row] + data_rows)
+        
+        # 5. 构建最终写入的 Markdown 文本
+        md_content = f"# {title}\n\n{md_table}\n"
+        
+        # 6. 确认输出目录并写入
+        out_md_path = DOCS_DIR / f'pages/guide/{csv_path.stem}.md'
+        out_md_path.parent.mkdir(parents=True, exist_ok=True)  # 确保 guide 目录存在
+        
+        with open(out_md_path, 'w', encoding='utf-8') as f:
+            f.write(md_content)
+            
+        print(f"✅ 成功生成 Markdown 文档: {out_md_path}")
+
+
 def csv_to_markdown_table000(csv_path: Path) -> str:
     """将 CSV 转为 Markdown 表格"""
     with open(csv_path, encoding='utf-8', errors='ignore') as f:
@@ -567,3 +620,4 @@ def update_sidebar(items: list) -> None:
 
 if __name__ == '__main__':
     generate_pages()
+    csv_to_md_sim()
