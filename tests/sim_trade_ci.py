@@ -269,7 +269,7 @@ def backtest_final(
                     # 今天没有行情，继续持有
                     still_hold.append(pos)
                     continue
-
+                
                 sr = sell_revenue(sp, SHARES_PER_STOCK)
                 buy_amount = bp * SHARES_PER_STOCK
                 sell_amount = sp * SHARES_PER_STOCK
@@ -431,6 +431,7 @@ def main(
     out: str = "./tests/sim_trade_result.csv",
     detail_out: str = "./tests/sim_trade_detail.csv",
 ):
+
     """
     最终增强版：
     - 以实际存在的 filter_ret.csv 日期正序作为交易主轴
@@ -438,66 +439,70 @@ def main(
     - 按 CSV 日期顺序视为连续交易日
     - 一次输出 top1 / top3 / top5 / top10
     """
-    provider_uri = str(Path(provider_uri).expanduser())
-    score_dir = Path(qlib_score_dir)
-    if not score_dir.is_absolute():
-        score_dir = Path.cwd() / score_dir
+    global SHARES_PER_STOCK
+    for _nums in [500,1000]:
+        _new_shuffix="-1000" if _nums==1000 else ""
+        SHARES_PER_STOCK=_nums
+        provider_uri = str(Path(provider_uri).expanduser())
+        score_dir = Path(qlib_score_dir)
+        if not score_dir.is_absolute():
+            score_dir = Path.cwd() / score_dir
 
-    print(f"初始化 qlib... (provider_uri={provider_uri})")
-    init_qlib(provider_uri)
+        print(f"初始化 qlib... (provider_uri={provider_uri})")
+        init_qlib(provider_uri)
 
-    print(f"预加载预测表: {score_dir}")
-    score_tables = load_all_filter_tables(score_dir)
-    if not score_tables:
-        print("未找到任何 *filter_ret.csv，退出。")
-        return
+        print(f"预加载预测表: {score_dir}")
+        score_tables = load_all_filter_tables(score_dir)
+        if not score_tables:
+            print("未找到任何 *filter_ret.csv，退出。")
+            return
 
-    print(f"共加载 {len(score_tables)} 个预测日期的数据，开始最终增强版滚动回测...")
+        print(f"共加载 {len(score_tables)} 个预测日期的数据，开始最终增强版滚动回测...")
 
-    top_n_list = [1, 3, 5, 10]
-    out_path = Path(out)
-    detail_path = Path(detail_out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    detail_path.parent.mkdir(parents=True, exist_ok=True)
+        top_n_list = [1, 3, 5, 10]
+        out_path = Path(out)
+        detail_path = Path(detail_out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        detail_path.parent.mkdir(parents=True, exist_ok=True)
 
-    compare_rows: list[dict] = []
+        compare_rows: list[dict] = []
 
-    for n in top_n_list:
-        print(f"\n========== 开始回测 top{n} ==========")
-        summary_rows, detail_rows = backtest_final(score_tables, top_n=n)
-        if not summary_rows:
-            print(f"top{n} 没有生成任何结果。")
-            continue
+        for n in top_n_list:
+            print(f"\n========== 开始回测 top{n} ==========")
+            summary_rows, detail_rows = backtest_final(score_tables, top_n=n)
+            if not summary_rows:
+                print(f"top{n} 没有生成任何结果。")
+                continue
 
-        result_path = out_path.with_name(f"{out_path.stem}_top{n}{out_path.suffix}")
-        detail_result_path = detail_path.with_name(f"{detail_path.stem}_top{n}{detail_path.suffix}")
+            result_path = out_path.with_name(f"{out_path.stem}_top{n}{_new_shuffix}{out_path.suffix}")
+            detail_result_path = detail_path.with_name(f"{detail_path.stem}_top{n}{_new_shuffix}{detail_path.suffix}")
 
-        stats = write_outputs(summary_rows, detail_rows, result_path, detail_result_path)
-        stats["top_n"] = n
-        compare_rows.append(stats)
+            stats = write_outputs(summary_rows, detail_rows, result_path, detail_result_path)
+            stats["top_n"] = n
+            compare_rows.append(stats)
 
-        print(
-            f"\n=== 模拟交易统计 top{n} ===\n"
-            f"  交易天数:  {stats['交易天数']}\n"
-            f"  含卖出天数: {stats['含卖出天数']}\n"
-            f"  盈利天数:  {stats['盈利天数']} ({stats['胜率']} of sell days)\n"
-            f"  累计净利润: {stats['累计净利润']}\n"
-            f"  平均日净利润: {stats['平均日净利润']}\n"
-            f"===========================\n"
-        )
+            print(
+                f"\n=== 模拟交易统计 top{n} ===\n"
+                f"  交易天数:  {stats['交易天数']}\n"
+                f"  含卖出天数: {stats['含卖出天数']}\n"
+                f"  盈利天数:  {stats['盈利天数']} ({stats['胜率']} of sell days)\n"
+                f"  累计净利润: {stats['累计净利润']}\n"
+                f"  平均日净利润: {stats['平均日净利润']}\n"
+                f"===========================\n"
+            )
 
-    if compare_rows:
-        
-        
-        compare_df = pd.DataFrame(compare_rows, columns=[
-            "top_n", "交易天数", "含卖出天数", "盈利天数", "胜率",
-            "累计净利润", "平均日净利润", "整体总收益率"
-        ])
+        if compare_rows:
+            
+            
+            compare_df = pd.DataFrame(compare_rows, columns=[
+                "top_n", "交易天数", "含卖出天数", "盈利天数", "胜率",
+                "累计净利润", "平均日净利润", "整体总收益率"
+            ])
 
-        compare_path = out_path.with_name(f"{out_path.stem}_compare{out_path.suffix}")
-        compare_df.to_csv(compare_path, index=False, encoding="utf-8-sig")
-        print(f"\nTopN 对比汇总已保存: {compare_path}")
-        print(compare_df.to_string(index=False))
+            compare_path = out_path.with_name(f"{out_path.stem}_compare{_new_shuffix}{out_path.suffix}")
+            compare_df.to_csv(compare_path, index=False, encoding="utf-8-sig")
+            print(f"\nTopN 对比汇总已保存: {compare_path}")
+            print(compare_df.to_string(index=False))
 
 
 if __name__ == "__main__":
