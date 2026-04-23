@@ -48,7 +48,7 @@ def csv_to_md_sim():
         "sim_trade_result_top10.csv": "买卖排名前10的股票各1000股",
         "sim_trade_result_compare.csv": "不同买卖方式收益对比"
     }
-    for csvname,title in csv_map.items()
+    for csvname,title in csv_map.items():
         csv_path=Path(f'{PROJECT_ROOT}/tests/{csvname}')
     
             
