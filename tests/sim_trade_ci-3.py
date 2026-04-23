@@ -405,6 +405,14 @@ def write_outputs(
     print(f"明细结果已保存: {detail_path} ({len(df_detail)} 行)")
 
     total_net = df_summary["净利润"].sum()
+
+    # 2. 计算累计卖出成本 = 卖出总额 - 毛利润
+    # 这是计算真实总体收益率的正确分母
+    total_sell_cost = (df_summary["卖出总额"] - df_summary["毛利润"]).sum()
+    
+    # 3. 正确的总收益率：总净利润 / 总投入成本
+    overall_return_pct = f"{(total_net / total_sell_cost * 100):.4f}%" if total_sell_cost > 0 else "0.00%"
+
     sell_days = int((df_summary["卖出股票数"] > 0).sum())
     total_days = len(df_summary)
     win_days = int((df_summary["净利润"] > 0).sum())
@@ -418,6 +426,7 @@ def write_outputs(
         "胜率": win_pct,
         "累计净利润": round(total_net, 2),
         "平均日净利润": avg_net,
+        "整体总收益率": overall_return_pct, # <- 增加这一项返回
     }
 
 
