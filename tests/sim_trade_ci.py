@@ -33,7 +33,7 @@ import pandas as pd
 # ──────────────────────────────────────────────
 # 全局参数（A股费率）
 # ──────────────────────────────────────────────
-SHARES_PER_STOCK = 1_000
+SHARES_PER_STOCK = 500
 COMMISSION_RATE = 0.0003
 MIN_COMMISSION = 5.0
 STAMP_TAX_RATE = 0.0005

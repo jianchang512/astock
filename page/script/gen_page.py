@@ -42,10 +42,10 @@ def csv_to_markdown_table2(csv_path: Path) -> str:
 def csv_to_md_sim():
     
     csv_map = {
-        "sim_trade_result_top1.csv": "仅买卖排名第一的股票1000股",
-        "sim_trade_result_top3.csv": "买卖排名前3的股票各1000股",
-        "sim_trade_result_top5.csv": "买卖排名前5的股票各1000股",
-        "sim_trade_result_top10.csv": "买卖排名前10的股票各1000股",
+        "sim_trade_result_top1.csv": "仅买卖排名第一的股票500股",
+        "sim_trade_result_top3.csv": "买卖排名前3的股票各500股",
+        "sim_trade_result_top5.csv": "买卖排名前5的股票各500股",
+        "sim_trade_result_top10.csv": "买卖排名前10的股票各500股",
         "sim_trade_result_compare.csv": "不同买卖方式收益对比"
     }
     for csvname,title in csv_map.items():
