@@ -3,6 +3,7 @@ review_csv/
 .vscode/
 **/__pycache__/
 roll/home
+*.7z
 
 # --- VitePress (page) ---
 page/node_modules/
