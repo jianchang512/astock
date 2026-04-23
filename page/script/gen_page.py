@@ -237,7 +237,8 @@ def csv_to_md_sim():
         
         if csvname.startswith('sim_trade_result_top'):
             jscode=generate_echarts_script(csv_path)
-            md_content+=f"\n{jscode}"
+            with open(DOCS_DIR / f'public/{csv_path.stem}.html', 'w', encoding='utf-8') as f:
+                f.write(jscode)
         
         with open(out_md_path, 'w', encoding='utf-8') as f:
             f.write(md_content)
