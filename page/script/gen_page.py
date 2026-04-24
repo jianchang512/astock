@@ -741,9 +741,11 @@ def generate_pages_auto() -> None:
             f for f in subdir.iterdir()
             if f.is_file() and f.suffix == '.md' and f.name != 'index.md'
         ]
-        
+        if "guide" in subdir_name:
+            print(md_files)
         md_files = sorted(md_files, key=lambda x: x.stem if "guide" not in subdir_name else x.stem[0])
-
+        if "guide" in subdir_name:
+            print(md_files)
         # 只生成侧边栏，不修改 index.md 正文
         rel_path = f'/pages/{subdir_name}'
         sidebar_items = [
