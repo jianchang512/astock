@@ -197,6 +197,9 @@ def csv_to_md_sim():
         "sim_trade_result_top10.csv": "前 10 只股票[500股]",
         "sim_trade_result_top10-1000.csv": "前 10 只股票[1000股]",
         
+        "sim_trade_result_top20.csv": "前 20 只股票[500股]",
+        "sim_trade_result_top20-1000.csv": "前 20 只股票[1000股]",
+        
         "sim_trade_result_compare.csv": "收益对比[500股]",
         "sim_trade_result_compare-1000.csv": "收益对比[1000股]",
     }
