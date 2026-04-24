@@ -732,25 +732,25 @@ def generate_pages_auto() -> None:
     pages_sidebar: dict[str, list[dict[str, str]]] = {}
     csv_map = {
         
-        "sim_trade_result_top3-300.csv": "A",
-        "sim_trade_result_top3-600.csv": "B",
-        "sim_trade_result_top3-1000.csv": "C",
+        "sim_trade_result_top3-300": "A",
+        "sim_trade_result_top3-600": "B",
+        "sim_trade_result_top3-1000": "C",
         
-        "sim_trade_result_top5-300.csv": "D",
-        "sim_trade_result_top5-600.csv": "E",
-        "sim_trade_result_top5-1000.csv": "F",
+        "sim_trade_result_top5-300": "D",
+        "sim_trade_result_top5-600": "E",
+        "sim_trade_result_top5-1000": "F",
         
-        "sim_trade_result_top10-300.csv": "G",
-        "sim_trade_result_top10-600.csv": "H",
-        "sim_trade_result_top10-1000.csv": "I",
+        "sim_trade_result_top10-300": "G",
+        "sim_trade_result_top10-600": "H",
+        "sim_trade_result_top10-1000": "I",
         
-        "sim_trade_result_top15-300.csv": "J",
-        "sim_trade_result_top15-600.csv": "K",
-        "sim_trade_result_top15-1000.csv": "L",
+        "sim_trade_result_top15-300": "J",
+        "sim_trade_result_top15-600": "K",
+        "sim_trade_result_top15-1000": "L",
         
-        "sim_trade_result_compare-300.csv": "M",
-        "sim_trade_result_compare-600.csv": "M",
-        "sim_trade_result_compare-1000.csv": "M",
+        "sim_trade_result_compare-300": "M",
+        "sim_trade_result_compare-600": "M",
+        "sim_trade_result_compare-1000": "M",
     }
 
     for subdir in sorted(pages_dir.iterdir()):
@@ -764,7 +764,7 @@ def generate_pages_auto() -> None:
             if f.is_file() and f.suffix == '.md' and f.name != 'index.md'
         ]
         if "guide" in subdir_name:
-            md_files = sorted(md_files, key=lambda x: csv_map.get(x.name,'Z'))
+            md_files = sorted(md_files, key=lambda x: csv_map.get(x.stem,'Z'))
         else:
             md_files = sorted(md_files, key=lambda x: x.stem)
         if "guide" in subdir_name:
