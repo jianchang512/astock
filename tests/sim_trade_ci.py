@@ -459,7 +459,7 @@ def main(
 
         print(f"共加载 {len(score_tables)} 个预测日期的数据，开始最终增强版滚动回测...")
 
-        top_n_list = [1, 3, 5, 10, 20]
+        top_n_list = [1, 3, 5, 10, 15]
         out_path = Path(out)
         detail_path = Path(detail_out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
