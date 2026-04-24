@@ -440,8 +440,8 @@ def main(
     - 一次输出 top1 / top3 / top5 / top10
     """
     global SHARES_PER_STOCK
-    for _nums in [500,1000]:
-        _new_shuffix="-1000" if _nums==1000 else ""
+    for _nums in [300,600,1000]:
+        _new_shuffix=f"{_nums}"
         SHARES_PER_STOCK=_nums
         provider_uri = str(Path(provider_uri).expanduser())
         score_dir = Path(qlib_score_dir)
