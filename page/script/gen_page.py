@@ -741,8 +741,8 @@ def generate_pages_auto() -> None:
             f for f in subdir.iterdir()
             if f.is_file() and f.suffix == '.md' and f.name != 'index.md'
         ]
-        if "guide" not in subdir_name:
-            md_files = sorted(md_files, key=lambda x: x.stem)
+        
+        md_files = sorted(md_files, key=lambda x: x.stem if "guide" not in subdir_name else x.stem[0])
 
         # 只生成侧边栏，不修改 index.md 正文
         rel_path = f'/pages/{subdir_name}'
