@@ -186,21 +186,21 @@ def csv_to_md_sim():
     
     csv_map = {
         
-        "sim_trade_result_top3-300.csv": "[A]前3只股票[300股]",
-        "sim_trade_result_top3-600.csv": "[B]前3只股票[600股]",
-        "sim_trade_result_top3-1000.csv": "[C]前3只股票[1000股]",
+        "sim_trade_result_top3-300.csv": "A.前3只股票[300股]",
+        "sim_trade_result_top3-600.csv": "B.前3只股票[600股]",
+        "sim_trade_result_top3-1000.csv": "C.前3只股票[1000股]",
         
-        "sim_trade_result_top5-300.csv": "[D]前5只股票[300股]",
-        "sim_trade_result_top5-600.csv": "[E]前5只股票[600股]",
-        "sim_trade_result_top5-1000.csv": "[F]前5只股票[1000股]",
+        "sim_trade_result_top5-300.csv": "D.前5只股票[300股]",
+        "sim_trade_result_top5-600.csv": "E.前5只股票[600股]",
+        "sim_trade_result_top5-1000.csv": "F.前5只股票[1000股]",
         
-        "sim_trade_result_top10-300.csv": "[G]前10只股票[300股]",
-        "sim_trade_result_top10-600.csv": "[H]前10只股票[600股]",
-        "sim_trade_result_top10-1000.csv": "[I]前10只股票[1000股]",
+        "sim_trade_result_top10-300.csv": "G.前10只股票[300股]",
+        "sim_trade_result_top10-600.csv": "H.前10只股票[600股]",
+        "sim_trade_result_top10-1000.csv": "I.前10只股票[1000股]",
         
-        "sim_trade_result_top15-300.csv": "[J]前15只股票[300股]",
-        "sim_trade_result_top15-600.csv": "[K]前15只股票[600股]",
-        "sim_trade_result_top15-1000.csv": "[L]前15只股票[1000股]",
+        "sim_trade_result_top15-300.csv": "J.前15只股票[300股]",
+        "sim_trade_result_top15-600.csv": "K.前15只股票[600股]",
+        "sim_trade_result_top15-1000.csv": "L.前15只股票[1000股]",
         
         "sim_trade_result_compare-300.csv": "收益对比",
         "sim_trade_result_compare-600.csv": "收益对比",
@@ -741,7 +741,8 @@ def generate_pages_auto() -> None:
             f for f in subdir.iterdir()
             if f.is_file() and f.suffix == '.md' and f.name != 'index.md'
         ]
-        md_files = sorted(md_files, key=lambda x: x.stem)
+        if "guide" not in subdir_name:
+            md_files = sorted(md_files, key=lambda x: x.stem)
 
         # 只生成侧边栏，不修改 index.md 正文
         rel_path = f'/pages/{subdir_name}'
