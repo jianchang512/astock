@@ -185,29 +185,26 @@ document.addEventListener("DOMContentLoaded", function() {{
 def csv_to_md_sim():
     
     csv_map = {
-        "sim_trade_result_top1-300.csv": "前 1 只股票[300股]",
-        "sim_trade_result_top1-600.csv": "前 1 只股票[600股]",
-        "sim_trade_result_top1-1000.csv": "前 1 只股票[1000股]",
         
         "sim_trade_result_top3-300.csv": "前 3 只股票[300股]",
         "sim_trade_result_top3-600.csv": "前 3 只股票[600股]",
-        "sim_trade_result_top3-1000.csv": "前 3 只股票[1000股]",
+        "sim_trade_result_top3-1000.csv": "前 3 只股票[一千股]",
         
         "sim_trade_result_top5-300.csv": "前 5 只股票[300股]",
         "sim_trade_result_top5-600.csv": "前 5 只股票[600股]",
-        "sim_trade_result_top5-1000.csv": "前 5 只股票[1000股]",
+        "sim_trade_result_top5-1000.csv": "前 5 只股票[一千股]",
         
-        "sim_trade_result_top10-300.csv": "前 10 只股票[300股]",
-        "sim_trade_result_top10-600.csv": "前 10 只股票[600股]",
-        "sim_trade_result_top10-1000.csv": "前 10 只股票[1000股]",
+        "sim_trade_result_top10-300.csv": "前 十 只股票[300股]",
+        "sim_trade_result_top10-600.csv": "前 十 只股票[600股]",
+        "sim_trade_result_top10-1000.csv": "前 十 只股票[一千股]",
         
-        "sim_trade_result_top15-300.csv": "前 15 只股票[300股]",
-        "sim_trade_result_top15-600.csv": "前 15 只股票[600股]",
-        "sim_trade_result_top15-1000.csv": "前 15 只股票[1000股]",
+        "sim_trade_result_top15-300.csv": "前 十五 只股票[300股]",
+        "sim_trade_result_top15-600.csv": "前 十五 只股票[600股]",
+        "sim_trade_result_top15-1000.csv": "前 十五 只股票[一千股]",
         
-        "sim_trade_result_compare-300.csv": "收益对比[300股]",
-        "sim_trade_result_compare-600.csv": "收益对比[600股]",
-        "sim_trade_result_compare-1000.csv": "收益对比[1000股]",
+        "sim_trade_result_compare-300.csv": "收益对比",
+        "sim_trade_result_compare-600.csv": "收益对比",
+        "sim_trade_result_compare-1000.csv": "收益对比",
     }
     
     _duibi=""
