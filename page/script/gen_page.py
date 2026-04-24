@@ -186,21 +186,21 @@ def csv_to_md_sim():
     
     csv_map = {
         
-        "sim_trade_result_top3-300.csv": "A.前3只股票[300股]",
-        "sim_trade_result_top3-600.csv": "B.前3只股票[600股]",
-        "sim_trade_result_top3-1000.csv": "C.前3只股票[1000股]",
+        "sim_trade_result_top3-300.csv": "前3只股票[300股]",
+        "sim_trade_result_top3-600.csv": "前3只股票[600股]",
+        "sim_trade_result_top3-1000.csv": "前3只股票[1000股]",
         
-        "sim_trade_result_top5-300.csv": "D.前5只股票[300股]",
-        "sim_trade_result_top5-600.csv": "E.前5只股票[600股]",
-        "sim_trade_result_top5-1000.csv": "F.前5只股票[1000股]",
+        "sim_trade_result_top5-300.csv": "前5只股票[300股]",
+        "sim_trade_result_top5-600.csv": "前5只股票[600股]",
+        "sim_trade_result_top5-1000.csv": "前5只股票[1000股]",
         
-        "sim_trade_result_top10-300.csv": "G.前10只股票[300股]",
-        "sim_trade_result_top10-600.csv": "H.前10只股票[600股]",
-        "sim_trade_result_top10-1000.csv": "I.前10只股票[1000股]",
+        "sim_trade_result_top10-300.csv": "前10只股票[300股]",
+        "sim_trade_result_top10-600.csv": "前10只股票[600股]",
+        "sim_trade_result_top10-1000.csv": "前10只股票[1000股]",
         
-        "sim_trade_result_top15-300.csv": "J.前15只股票[300股]",
-        "sim_trade_result_top15-600.csv": "K.前15只股票[600股]",
-        "sim_trade_result_top15-1000.csv": "L.前15只股票[1000股]",
+        "sim_trade_result_top15-300.csv": "前15只股票[300股]",
+        "sim_trade_result_top15-600.csv": "前15只股票[600股]",
+        "sim_trade_result_top15-1000.csv": "前15只股票[1000股]",
         
         "sim_trade_result_compare-300.csv": "收益对比",
         "sim_trade_result_compare-600.csv": "收益对比",
@@ -730,6 +730,28 @@ def generate_pages_auto() -> None:
         return
 
     pages_sidebar: dict[str, list[dict[str, str]]] = {}
+    csv_map = {
+        
+        "sim_trade_result_top3-300.csv": "A",
+        "sim_trade_result_top3-600.csv": "B",
+        "sim_trade_result_top3-1000.csv": "C",
+        
+        "sim_trade_result_top5-300.csv": "D",
+        "sim_trade_result_top5-600.csv": "E",
+        "sim_trade_result_top5-1000.csv": "F",
+        
+        "sim_trade_result_top10-300.csv": "G",
+        "sim_trade_result_top10-600.csv": "H",
+        "sim_trade_result_top10-1000.csv": "I",
+        
+        "sim_trade_result_top15-300.csv": "J",
+        "sim_trade_result_top15-600.csv": "K",
+        "sim_trade_result_top15-1000.csv": "L",
+        
+        "sim_trade_result_compare-300.csv": "M",
+        "sim_trade_result_compare-600.csv": "M",
+        "sim_trade_result_compare-1000.csv": "M",
+    }
 
     for subdir in sorted(pages_dir.iterdir()):
         if not subdir.is_dir():
@@ -742,8 +764,9 @@ def generate_pages_auto() -> None:
             if f.is_file() and f.suffix == '.md' and f.name != 'index.md'
         ]
         if "guide" in subdir_name:
-            print(md_files)
-        md_files = sorted(md_files, key=lambda x: x.stem if "guide" not in subdir_name else x.stem[0])
+            md_files = sorted(md_files, key=lambda x: csv_map.get(x.name,'Z'))
+        else:
+            md_files = sorted(md_files, key=lambda x: x.stem)
         if "guide" in subdir_name:
             print(md_files)
         # 只生成侧边栏，不修改 index.md 正文
