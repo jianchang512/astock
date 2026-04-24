@@ -201,7 +201,7 @@ def select_trade_candidates(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
 
     # 3. 修改排序规则：先按 pos_ratio 倒序，再按 avg_score 倒序
     #ranked = ranked.sort_values(by=["pos_ratio", "avg_score"], ascending=[False, False])
-    ranked = ranked.sort_values(by=["avg_score"], ascending=[False, False])
+    ranked = ranked.sort_values(by=["avg_score"], ascending=[False])
     return ranked.head(top_n)
     
 def select_trade_candidates00(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
