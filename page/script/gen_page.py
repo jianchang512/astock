@@ -186,21 +186,21 @@ def csv_to_md_sim():
     
     csv_map = {
         
-        "sim_trade_result_top3-300.csv": "03 只股票[ 300股]",
-        "sim_trade_result_top3-600.csv": "03 只股票[ 600股]",
-        "sim_trade_result_top3-1000.csv": "03 只股票[一千股]",
+        "sim_trade_result_top3-300.csv": "[A]前3只股票[300股]",
+        "sim_trade_result_top3-600.csv": "[B]前3只股票[600股]",
+        "sim_trade_result_top3-1000.csv": "[C]前3只股票[1000股]",
         
-        "sim_trade_result_top5-300.csv": "05 只股票[ 300股]",
-        "sim_trade_result_top5-600.csv": "05 只股票[ 600股]",
-        "sim_trade_result_top5-1000.csv": "05 只股票[一千股]",
+        "sim_trade_result_top5-300.csv": "[D]前5只股票[300股]",
+        "sim_trade_result_top5-600.csv": "[E]前5只股票[600股]",
+        "sim_trade_result_top5-1000.csv": "[F]前5只股票[1000股]",
         
-        "sim_trade_result_top10-300.csv": "10 只股票[ 300股]",
-        "sim_trade_result_top10-600.csv": "10 只股票[ 600股]",
-        "sim_trade_result_top10-1000.csv": "10 只股票[一千股]",
+        "sim_trade_result_top10-300.csv": "[G]前10只股票[300股]",
+        "sim_trade_result_top10-600.csv": "[H]前10只股票[600股]",
+        "sim_trade_result_top10-1000.csv": "[I]前10只股票[1000股]",
         
-        "sim_trade_result_top15-300.csv": "15 只股票[ 300股]",
-        "sim_trade_result_top15-600.csv": "15 只股票[ 600股]",
-        "sim_trade_result_top15-1000.csv": "15 只股票[一千股]",
+        "sim_trade_result_top15-300.csv": "[J]前15只股票[300股]",
+        "sim_trade_result_top15-600.csv": "[K]前15只股票[600股]",
+        "sim_trade_result_top15-1000.csv": "[L]前15只股票[1000股]",
         
         "sim_trade_result_compare-300.csv": "收益对比",
         "sim_trade_result_compare-600.csv": "收益对比",
