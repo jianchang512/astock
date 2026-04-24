@@ -186,6 +186,10 @@ def csv_to_md_sim():
     
     csv_map = {
         
+        "sim_trade_result_top1-300.csv": "前1只股票[300股]",
+        "sim_trade_result_top1-600.csv": "前1只股票[600股]",
+        "sim_trade_result_top1-1000.csv": "前1只股票[1000股]",
+        
         "sim_trade_result_top3-300.csv": "前3只股票[300股]",
         "sim_trade_result_top3-600.csv": "前3只股票[600股]",
         "sim_trade_result_top3-1000.csv": "前3只股票[1000股]",
@@ -202,9 +206,9 @@ def csv_to_md_sim():
         "sim_trade_result_top15-600.csv": "前15只股票[600股]",
         "sim_trade_result_top15-1000.csv": "前15只股票[1000股]",
         
-        "sim_trade_result_compare-300.csv": "收益对比",
-        "sim_trade_result_compare-600.csv": "收益对比",
-        "sim_trade_result_compare-1000.csv": "收益对比",
+        "sim_trade_result_compare-300.csv": "收益对比[300股]",
+        "sim_trade_result_compare-600.csv": "收益对比[600股]",
+        "sim_trade_result_compare-1000.csv": "收益对比[1000股]",
     }
     
     _duibi=""
@@ -261,7 +265,7 @@ def csv_to_md_sim():
                 
             print(f"✅ 成功生成 Markdown 文档: {out_md_path}")
         else:
-            _duibi+=md_content+"\n----\n----\n"
+            _duibi+=f"{title}\n\n{md_table}\n\n----\n----\n"
             
             
     out_md_path = DOCS_DIR / f'pages/guide/收益对比.md'
@@ -732,25 +736,29 @@ def generate_pages_auto() -> None:
     pages_sidebar: dict[str, list[dict[str, str]]] = {}
     csv_map = {
         
-        "sim_trade_result_top3-300": "A",
-        "sim_trade_result_top3-600": "B",
-        "sim_trade_result_top3-1000": "C",
+        "sim_trade_result_top1-300": "A",
+        "sim_trade_result_top1-600": "B",
+        "sim_trade_result_top1-1000": "C",
         
-        "sim_trade_result_top5-300": "D",
-        "sim_trade_result_top5-600": "E",
-        "sim_trade_result_top5-1000": "F",
+        "sim_trade_result_top3-300": "D",
+        "sim_trade_result_top3-600": "E",
+        "sim_trade_result_top3-1000": "F",
         
-        "sim_trade_result_top10-300": "G",
-        "sim_trade_result_top10-600": "H",
-        "sim_trade_result_top10-1000": "I",
+        "sim_trade_result_top5-300": "H",
+        "sim_trade_result_top5-600": "I",
+        "sim_trade_result_top5-1000": "J",
         
-        "sim_trade_result_top15-300": "J",
-        "sim_trade_result_top15-600": "K",
-        "sim_trade_result_top15-1000": "L",
+        "sim_trade_result_top10-300": "K",
+        "sim_trade_result_top10-600": "L",
+        "sim_trade_result_top10-1000": "M",
         
-        "sim_trade_result_compare-300": "M",
-        "sim_trade_result_compare-600": "M",
-        "sim_trade_result_compare-1000": "M",
+        "sim_trade_result_top15-300": "N",
+        "sim_trade_result_top15-600": "O",
+        "sim_trade_result_top15-1000": "P",
+        
+        "sim_trade_result_compare-300": "Q",
+        "sim_trade_result_compare-600": "R",
+        "sim_trade_result_compare-1000": "S",
     }
 
     for subdir in sorted(pages_dir.iterdir()):
