@@ -326,7 +326,8 @@ def csv_to_markdown_table(csv_path: Path) -> str:
             score_val = -float('inf') 
 
         # 返回元组，外层 sort(reverse=True) 会先根据 ratio_val 倒序，同值再根据 score_val 倒序
-        return (ratio_val, score_val)
+        #return (ratio_val, score_val)
+        return ( score_val, ratio_val)
 
     # 对数据行进行多重倒序排序
     data_rows.sort(key=sort_key, reverse=True)
