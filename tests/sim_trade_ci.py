@@ -347,10 +347,8 @@ def backtest_final(
         summary_rows.append({
             "交易日期": today,
             "预测日期": pred_day,
-            "买入股票": ",".join(buy_instruments) if buy_instruments else "",
             "买入股票数": len(buy_instruments),
             "买入总额": round(buy_total, 2),
-            "卖出股票": ",".join(sell_instruments) if sell_instruments else "",
             "卖出股票数": len(sell_instruments),
             "卖出总额": round(day_sell_total, 2),
             "手续费": round(day_total_fee, 2),
@@ -358,6 +356,8 @@ def backtest_final(
             "净利润": round(day_net_profit, 2),
             "收益率%": round(return_pct, 4),
             "累计净利润": round(cum_profit, 2),
+            "买入股票": ",".join(buy_instruments) if buy_instruments else "",
+            "卖出股票": ",".join(sell_instruments) if sell_instruments else "",
         })
 
         action_desc = []
@@ -383,9 +383,9 @@ def write_outputs(
     detail_path: Path,
 ):
     df_summary = pd.DataFrame(summary_rows, columns=[
-        "交易日期", "预测日期", "买入股票", "买入股票数", "买入总额",
-        "卖出股票", "卖出股票数", "卖出总额",
-        "手续费", "毛利润", "净利润", "收益率%", "累计净利润",
+        "交易日期", "预测日期", "买入股票数", "买入总额",
+        "卖出股票数", "卖出总额",
+        "手续费", "毛利润", "净利润", "收益率%", "累计净利润","买入股票", "卖出股票", 
     ])
     df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
     print(f"汇总结果已保存: {out_path} ({len(df_summary)} 行)")

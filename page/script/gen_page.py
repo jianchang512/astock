@@ -258,7 +258,7 @@ def csv_to_md_sim():
                 f.write(jscode)
             (DOCS_DIR / '.vitepress/dist').mkdir(exist_ok=True)
             shutil.copy2(jsfile,DOCS_DIR / f'.vitepress/dist/{csv_path.stem}.html')
-            md_content=f'# {title}\n\n<iframe style="width:800px;height:800px;overflow:hidden;border:none" src="https://jianchang512.github.io/astock/{csv_path.stem}.html"></iframe>\n\n---\n'
+            md_content=f'# {title}\n\n<iframe style="width:800px;height:900px;overflow:hidden;border:none" src="https://jianchang512.github.io/astock/{csv_path.stem}.html"></iframe>\n\n---\n'
             
             md_content+=md_table
             with open(out_md_path, 'w', encoding='utf-8') as f:
