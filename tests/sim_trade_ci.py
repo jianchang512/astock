@@ -415,7 +415,8 @@ def write_outputs(
         "含卖出天数": sell_days,
         "盈利天数": win_days,
         "胜率": win_pct,
-        "累计净利润": round(total_net, 2),
+        "总净利润": round(total_net, 2),
+        "总投入成本":total_sell_cost,
         "平均日净利润": avg_net,
         "整体总收益率": overall_return_pct, # <- 增加这一项返回
     }
@@ -496,7 +497,7 @@ def main(
             
             compare_df = pd.DataFrame(compare_rows, columns=[
                 "top_n", "交易天数", "含卖出天数", "盈利天数", "胜率",
-                "累计净利润", "平均日净利润", "整体总收益率"
+                "总净利润","总投入成本", "平均日净利润", "整体总收益率"
             ])
 
             compare_path = out_path.with_name(f"{out_path.stem}_compare{_new_shuffix}{out_path.suffix}")

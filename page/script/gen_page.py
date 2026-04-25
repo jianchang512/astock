@@ -266,7 +266,7 @@ def csv_to_md_sim():
                 
             print(f"✅ 成功生成 Markdown 文档: {out_md_path}")
         else:
-            _duibi+=f"## {title}\n总收益率=净利润总和/(卖出额-毛利润)总和 \n{md_table}\n\n----\n----\n"
+            _duibi+=f"## {title}\n总收益率=总净利润/总投入成本\n\n投入成本=卖出额-毛利润 \n{md_table}\n\n----\n----\n"
             
             
     out_md_path = DOCS_DIR / f'pages/guide/收益对比.md'
