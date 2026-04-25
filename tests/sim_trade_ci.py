@@ -482,16 +482,7 @@ def main(
             stats["top_n"] = n
             compare_rows.append(stats)
 
-            print(
-                f"\n=== 模拟交易统计 top{n} ===\n"
-                f"  交易天数:  {stats['交易天数']}\n"
-                f"  含卖出天数: {stats['含卖出天数']}\n"
-                f"  盈利天数:  {stats['盈利天数']} ({stats['胜率']} of sell days)\n"
-                f"  累计净利润: {stats['累计净利润']}\n"
-                f"  平均日净利润: {stats['平均日净利润']}\n"
-                f"===========================\n"
-            )
-
+            
         if compare_rows:
             
             
