@@ -186,29 +186,29 @@ def csv_to_md_sim():
     
     csv_map = {
         
-        "sim_trade_result_top1-300.csv": "前1只股票[300股]",
-        "sim_trade_result_top1-600.csv": "前1只股票[600股]",
-        "sim_trade_result_top1-1000.csv": "前1只股票[1000股]",
+        "sim_trade_result_top1-300.csv": "买入前1只[每只300股]",
+        "sim_trade_result_top1-600.csv": "买入前1只[每只600股]",
+        "sim_trade_result_top1-1000.csv": "买入前1只[每只1000股]",
         
-        "sim_trade_result_top3-300.csv": "前3只股票[300股]",
-        "sim_trade_result_top3-600.csv": "前3只股票[600股]",
-        "sim_trade_result_top3-1000.csv": "前3只股票[1000股]",
+        "sim_trade_result_top3-300.csv": "买入前3只[每只300股]",
+        "sim_trade_result_top3-600.csv": "买入前3只[每只600股]",
+        "sim_trade_result_top3-1000.csv": "买入前3只[每只1000股]",
         
-        "sim_trade_result_top5-300.csv": "前5只股票[300股]",
-        "sim_trade_result_top5-600.csv": "前5只股票[600股]",
-        "sim_trade_result_top5-1000.csv": "前5只股票[1000股]",
+        "sim_trade_result_top5-300.csv": "买入前5只[每只300股]",
+        "sim_trade_result_top5-600.csv": "买入前5只[每只600股]",
+        "sim_trade_result_top5-1000.csv": "买入前5只[每只1000股]",
         
-        "sim_trade_result_top10-300.csv": "前10只股票[300股]",
-        "sim_trade_result_top10-600.csv": "前10只股票[600股]",
-        "sim_trade_result_top10-1000.csv": "前10只股票[1000股]",
+        "sim_trade_result_top10-300.csv": "买入前10只[每只300股]",
+        "sim_trade_result_top10-600.csv": "买入前10只[每只600股]",
+        "sim_trade_result_top10-1000.csv": "买入前10只[每只1000股]",
         
-        "sim_trade_result_top15-300.csv": "前15只股票[300股]",
-        "sim_trade_result_top15-600.csv": "前15只股票[600股]",
-        "sim_trade_result_top15-1000.csv": "前15只股票[1000股]",
+        "sim_trade_result_top15-300.csv": "买入前15只[每只300股]",
+        "sim_trade_result_top15-600.csv": "买入前15只[每只600股]",
+        "sim_trade_result_top15-1000.csv": "买入前15只[每只1000股]",
         
-        "sim_trade_result_compare-300.csv": "收益对比[300股]",
-        "sim_trade_result_compare-600.csv": "收益对比[600股]",
-        "sim_trade_result_compare-1000.csv": "收益对比[1000股]",
+        "sim_trade_result_compare-300.csv": "收益对比[每只买入300股]",
+        "sim_trade_result_compare-600.csv": "收益对比[每只买入600股]",
+        "sim_trade_result_compare-1000.csv": "收益对比[每只买入1000股]",
     }
     
     _duibi=""
@@ -245,7 +245,6 @@ def csv_to_md_sim():
         md_table = "\n".join([header_row, separator_row] + data_rows)
         
         # 5. 构建最终写入的 Markdown 文本
-        md_content = f"# {title}\n\n{md_table}\n"
         
         # 6. 确认输出目录并写入
         out_md_path = DOCS_DIR / f'pages/guide/{csv_path.stem}.md'
@@ -259,13 +258,15 @@ def csv_to_md_sim():
                 f.write(jscode)
             (DOCS_DIR / '.vitepress/dist').mkdir(exist_ok=True)
             shutil.copy2(jsfile,DOCS_DIR / f'.vitepress/dist/{csv_path.stem}.html')
-            md_content+=f"""<iframe style="width:800px;height:1000px;overflow:hidden" src="https://jianchang512.github.io/astock/{csv_path.stem}.html"></iframe>"""
+            md_content=f"""# {title}\n\n
+            <iframe style="width:1000px;height:1000px;overflow:hidden" src="https://jianchang512.github.io/astock/{csv_path.stem}.html"></iframe>\n
+            {md_table}\n"""
             with open(out_md_path, 'w', encoding='utf-8') as f:
                 f.write(md_content)
                 
             print(f"✅ 成功生成 Markdown 文档: {out_md_path}")
         else:
-            _duibi+=f"{title}\n\n{md_table}\n\n----\n----\n"
+            _duibi+=f"## {title}\n\n{md_table}\n\n----\n----\n"
             
             
     out_md_path = DOCS_DIR / f'pages/guide/收益对比.md'
