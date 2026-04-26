@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-模拟交易 CI 版 —— 最终增强版 (已修复Bug版)
+模拟交易 CI 版 —— 真实资金流 + 复权因子等效股数版
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ TRANSFER_RATE = 0.00001
 
 
 # ──────────────────────────────────────────────
-# 费用计算
+# 费用计算 (注意：股数可能会因为复权变成浮点数，将类型改为 float)
 # ──────────────────────────────────────────────
 
 def _commission(amount: float) -> float:
@@ -33,11 +33,11 @@ def _commission(amount: float) -> float:
 def _transfer_fee(amount: float) -> float:
     return amount * TRANSFER_RATE
 
-def buy_cost(price: float, shares: int) -> float:
+def buy_cost(price: float, shares: float) -> float:
     amount = price * shares
     return amount + _commission(amount) + _transfer_fee(amount)
 
-def sell_revenue(price: float, shares: int) -> float:
+def sell_revenue(price: float, shares: float) -> float:
     amount = price * shares
     return amount - _commission(amount) - _transfer_fee(amount) - amount * STAMP_TAX_RATE
 
@@ -60,17 +60,18 @@ def init_qlib(provider_uri: str):
     print(f"qlib 已初始化，数据源: {provider_uri}")
 
 
-def get_close_prices(instruments: list[str], date: str) -> dict[str, float]:
+def get_price_info(instruments: list[str], date: str) -> dict[str, dict]:
+    """
+    同时获取真实价格(close)和复权因子(factor)
+    """
     from qlib.data import D
 
     if not instruments:
         return {}
 
-    # 【修复3】为了计算连续收益，强烈建议使用复权价格。
-    # 标准 qlib 数据中，如果有 $factor，通常用 $close * $factor 获取真实回测复权价
-    # 如果你的 $close 已经是复权价，直接写 "$close" 即可，切忌使用 "$close / $factor"
+    # $close 通常是真实不复权收盘价，$factor 是累积复权因子
     df = D.features(
-        instruments,["$close * $factor"],  
+        instruments,["$close", "$factor"],
         start_time=date,
         end_time=date,
         freq="day",
@@ -78,19 +79,21 @@ def get_close_prices(instruments: list[str], date: str) -> dict[str, float]:
     if df is None or df.empty:
         return {}
 
-    df.columns = ["close"]
+    df.columns =["close", "factor"]
     df = df.reset_index()
-    # 过滤掉 NaN 的行情
     df = df.dropna(subset=["close"])
 
-    result: dict[str, float] = {}
+    result: dict[str, dict] = {}
     for _, row in df.iterrows():
-        result[row["instrument"]] = float(row["close"])
+        result[row["instrument"]] = {
+            "close": float(row["close"]),
+            "factor": float(row["factor"]) if not pd.isna(row["factor"]) else 1.0
+        }
     return result
 
 
 # ──────────────────────────────────────────────
-# 预测数据扫描与去重 (省略部分未改动的辅助函数)
+# 预测数据扫描与去重 (省略不变的辅助函数, 与原版一致)
 # ──────────────────────────────────────────────
 def get_score_subdirs(score_dir: Path) -> list[Path]:
     if not score_dir.exists(): return []
@@ -103,8 +106,7 @@ def get_score_subdirs(score_dir: Path) -> list[Path]:
     date_to_subdir: dict[str, Path] = {}
     for d in subdirs_sorted:
         date_key = _extract_date(d)
-        if date_key:
-            date_to_subdir[date_key] = d
+        if date_key: date_to_subdir[date_key] = d
     return sorted(date_to_subdir.values(), key=_extract_date)
 
 def extract_all_dates_from_csv(subdir: Path) -> list[str]:
@@ -148,7 +150,7 @@ def select_trade_candidates(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
 
 
 # ──────────────────────────────────────────────
-# 最终增强版：严格滚动回测
+# 最终增强版：严格滚动回测（包含复权因子调整逻辑）
 # ──────────────────────────────────────────────
 
 def backtest_final(
@@ -157,7 +159,6 @@ def backtest_final(
 ):
     predict_dates = list(score_tables.keys())
     if len(predict_dates) < 2:
-        print("预测日期不足，无法回测")
         return [], []
 
     summary_rows: list[dict] =[]
@@ -177,31 +178,39 @@ def backtest_final(
         day_net_profit = 0.0
         day_total_fee = 0.0
         
-        still_hold: list[dict] =[] # 记录今天无法卖出，需要继续持有的股票
+        still_hold: list[dict] =[]
 
         # 1) 卖出上一交易日持仓
         if previous_positions:
-            sell_prices = get_close_prices([p["instrument"] for p in previous_positions], today)
+            sell_info = get_price_info([p["instrument"] for p in previous_positions], today)
 
             for pos in previous_positions:
                 inst = pos["instrument"]
                 bp = pos["buy_price"]
                 bc = pos["buy_cost"]
-                sp = sell_prices.get(inst)
+                bfactor = pos["buy_factor"]
+                old_shares = pos["shares"]
 
-                if sp is None or pd.isna(sp) or sp <= 0:
-                    # 今天没有行情，继续持有
+                info = sell_info.get(inst)
+
+                if not info or pd.isna(info["close"]) or info["close"] <= 0:
                     still_hold.append(pos)
                     continue
                 
-                sr = sell_revenue(sp, SHARES_PER_STOCK)
-                buy_amount = bp * SHARES_PER_STOCK
-                sell_amount = sp * SHARES_PER_STOCK
+                sp = info["close"]
+                sfactor = info["factor"]
+
+                # ⭐ 核心：依靠前后复权因子计算等效股数（处理分红/送转）
+                equiv_shares = old_shares * (sfactor / bfactor) if bfactor else old_shares
+                
+                sr = sell_revenue(sp, equiv_shares)
+                buy_amount = bp * old_shares
+                sell_amount = sp * equiv_shares
                 
                 buy_fee = round(bc - buy_amount, 2)
                 sell_fee = round(sell_amount - sr, 2)
                 
-                gross = (sp - bp) * SHARES_PER_STOCK
+                gross = sell_amount - buy_amount
                 net = sr - bc
                 fee = round(buy_fee + sell_fee, 2)
 
@@ -216,14 +225,14 @@ def backtest_final(
                     "交易日期": today,
                     "股票代码": inst,
                     "操作": "卖出",
-                    "价格": round(sp, 4),
-                    "股数": SHARES_PER_STOCK,
-                    "金额": round(sr, 2),
+                    "真实价格": round(sp, 4),
+                    "股数": round(equiv_shares, 2), # 这里可能是小数，代表分红送股后的等效股数
+                    "金额(真金)": round(sr, 2),
                     "手续费": sell_fee,
                     "净利润": round(net, 2),
                 })
 
-        # 2) 按前一个预测日的 top_n 买入
+        # 2) 买入新股票
         buy_instruments: list[str] =[]
         buy_total = 0.0
         new_positions: list[dict] =[]
@@ -233,12 +242,16 @@ def backtest_final(
             selected = select_trade_candidates(today_buy_df, top_n=top_n)
             buy_instruments = selected["instrument"].tolist()
 
-            buy_prices = get_close_prices(buy_instruments, today)
+            buy_info = get_price_info(buy_instruments, today)
             for inst in buy_instruments:
-                bp = buy_prices.get(inst)
-                if bp is None or pd.isna(bp) or bp <= 0:
+                info = buy_info.get(inst)
+                if not info or pd.isna(info["close"]) or info["close"] <= 0:
                     continue
 
+                bp = info["close"]
+                bfactor = info["factor"]
+
+                # 真金白银买入成本
                 bc = buy_cost(bp, SHARES_PER_STOCK)
                 buy_amount = bp * SHARES_PER_STOCK
                 buy_fee = round(bc - buy_amount, 2)
@@ -247,6 +260,8 @@ def backtest_final(
                     "instrument": inst,
                     "buy_price": bp,
                     "buy_cost": bc,
+                    "buy_factor": bfactor,
+                    "shares": SHARES_PER_STOCK
                 })
                 buy_total += bc
 
@@ -254,15 +269,13 @@ def backtest_final(
                     "交易日期": today,
                     "股票代码": inst,
                     "操作": "买入",
-                    "价格": round(bp, 4),
+                    "真实价格": round(bp, 4),
                     "股数": SHARES_PER_STOCK,
-                    "金额": round(bc, 2),
+                    "金额(真金)": round(bc, 2),
                     "手续费": buy_fee,
                     "净利润": "",
                 })
 
-        # 【修复1：合并今天无法卖出的股票 + 今天新买入的股票】
-        # 你的原代码只有 previous_positions = new_positions 会导致没卖出的股票直接从资金中消失！
         previous_positions = still_hold + new_positions
 
         cum_profit += day_net_profit
@@ -272,10 +285,10 @@ def backtest_final(
             "交易日期": today,
             "预测日期": pred_day,
             "买入股票数": len(buy_instruments),
-            "买入总额": round(buy_total, 2),
+            "买入总额(真金)": round(buy_total, 2),
             "卖出股票数": len(sell_instruments),
-            "卖出总额": round(day_sell_total, 2),
-            "卖出标的总买入成本": round(day_sell_buy_cost, 2), # 【修复4：加入此字段以便正确统计总收益率】
+            "卖出总额(真金)": round(day_sell_total, 2),
+            "卖出标的总买入成本": round(day_sell_buy_cost, 2),
             "手续费": round(day_total_fee, 2),
             "毛利润": round(day_gross_profit, 2),
             "净利润": round(day_net_profit, 2),
@@ -286,18 +299,14 @@ def backtest_final(
         })
 
         action_desc =[]
-        if sell_instruments:
-            action_desc.append(f"卖出{len(sell_instruments)}只")
-        if buy_instruments:
-            action_desc.append(f"买入{len(buy_instruments)}只")
-        if still_hold:
-            action_desc.append(f"因无行情滞留{len(still_hold)}只")
-        if not action_desc:
-            action_desc.append("无交易")
+        if sell_instruments: action_desc.append(f"卖出{len(sell_instruments)}只")
+        if buy_instruments: action_desc.append(f"买入{len(buy_instruments)}只")
+        if still_hold: action_desc.append(f"滞留{len(still_hold)}只")
+        if not action_desc: action_desc.append("无交易")
 
         print(
             f"[{today}] pred={pred_day} {'/'.join(action_desc)}  "
-            f"净利润={day_net_profit:.2f}  累计={cum_profit:.2f}"
+            f"净利={day_net_profit:.2f}  累计={cum_profit:.2f}"
         )
 
     return summary_rows, detail_rows
@@ -310,23 +319,19 @@ def write_outputs(
     detail_path: Path,
 ):
     df_summary = pd.DataFrame(summary_rows, columns=[
-        "交易日期", "预测日期", "买入股票数", "买入总额",
-        "卖出股票数", "卖出总额", "卖出标的总买入成本",
+        "交易日期", "预测日期", "买入股票数", "买入总额(真金)",
+        "卖出股票数", "卖出总额(真金)", "卖出标的总买入成本",
         "手续费", "毛利润", "净利润", "收益率%", "累计净利润","买入股票", "卖出股票", 
     ])
     df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
 
     df_detail = pd.DataFrame(detail_rows, columns=[
-        "交易日期", "股票代码", "操作", "价格", "股数", "金额", "手续费", "净利润",
+        "交易日期", "股票代码", "操作", "真实价格", "股数", "金额(真金)", "手续费", "净利润",
     ])
     df_detail.to_csv(detail_path, index=False, encoding="utf-8-sig")
 
     total_net = df_summary["净利润"].sum()
-    
-    # 【修复4】：计算累计投入成本。你之前的公式逻辑有误（卖出总额-毛利润 不等于 包含双边手续费的买入成本）
     total_sell_cost = df_summary["卖出标的总买入成本"].sum()
-    
-    # 3. 正确的总收益率：总净利润 / 总投入成本
     overall_return_pct = f"{(total_net / total_sell_cost * 100):.4f}%" if total_sell_cost > 0 else "0.00%"
 
     sell_days = int((df_summary["卖出股票数"] > 0).sum())
@@ -340,17 +345,15 @@ def write_outputs(
         "含卖出天数": sell_days,
         "盈利天数": win_days,
         "胜率": win_pct,
-        "总净利润": round(total_net, 2),
-        "总投入成本": round(total_sell_cost, 2),
-        "平均日净利润": avg_net,
-        "整体总收益率": overall_return_pct, 
+        "总净利(真金)": round(total_net, 2),
+        "总投入本金": round(total_sell_cost, 2),
+        "平均日净利": avg_net,
+        "真实总收益率": overall_return_pct, 
     }
-
 
 # ──────────────────────────────────────────────
 # 主入口
 # ──────────────────────────────────────────────
-
 def main(
     provider_uri: str = "~/.qlib/qlib_data/cn_data",
     qlib_score_dir: str = "./qlib_score_csv",
@@ -358,7 +361,7 @@ def main(
     detail_out: str = "./tests/sim_trade_detail.csv",
 ):
     global SHARES_PER_STOCK
-    for _nums in[300, 600, 1000]:
+    for _nums in [300, 600, 1000]:
         _new_shuffix = f"-{_nums}"
         SHARES_PER_STOCK = _nums
         provider_uri = str(Path(provider_uri).expanduser())
@@ -372,11 +375,9 @@ def main(
         init_qlib(provider_uri)
 
         score_tables = load_all_filter_tables(score_dir)
-        if not score_tables:
-            print("未找到任何 *filter_ret.csv，退出。")
-            return
+        if not score_tables: return
 
-        top_n_list = [1, 3, 5, 10, 15]
+        top_n_list =[1, 3, 5, 10, 15]
         out_path = Path(out)
         detail_path = Path(detail_out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -387,8 +388,7 @@ def main(
         for n in top_n_list:
             print(f"\n========== 开始回测 top{n} ==========")
             summary_rows, detail_rows = backtest_final(score_tables, top_n=n)
-            if not summary_rows:
-                continue
+            if not summary_rows: continue
 
             result_path = out_path.with_name(f"{out_path.stem}_top{n}{_new_shuffix}{out_path.suffix}")
             detail_result_path = detail_path.with_name(f"{detail_path.stem}_top{n}{_new_shuffix}{detail_path.suffix}")
@@ -396,14 +396,12 @@ def main(
             stats = write_outputs(summary_rows, detail_rows, result_path, detail_result_path)
             stats["top_n"] = n
             compare_rows.append(stats)
-
             
         if compare_rows:
             compare_df = pd.DataFrame(compare_rows, columns=[
                 "top_n", "交易天数", "含卖出天数", "盈利天数", "胜率",
-                "总净利润","总投入成本", "平均日净利润", "整体总收益率"
+                "总净利(真金)","总投入本金", "平均日净利", "真实总收益率"
             ])
-
             compare_path = out_path.with_name(f"{out_path.stem}_compare{_new_shuffix}{out_path.suffix}")
             compare_df.to_csv(compare_path, index=False, encoding="utf-8-sig")
             print(f"\nTopN 对比汇总 ({_nums}股) 已保存: {compare_path}")
