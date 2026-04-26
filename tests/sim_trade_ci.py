@@ -89,7 +89,8 @@ def get_close_prices(instruments: list[str], date: str) -> dict[str, float]:
 
     df = D.features(
         instruments,
-        ["$close * $factor"],
+        #["$close * $factor"],
+        ["$close"],
         start_time=date,
         end_time=date,
         freq="day",
