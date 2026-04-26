@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-模拟交易 CI 版 —— 真实资金流 + 复权因子等效股数版
+模拟交易 CI 版 —— 真实资金流 + 现价显示修复版
 """
 
 from __future__ import annotations
@@ -9,23 +9,16 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Optional
-
 import pandas as pd
 
 # ──────────────────────────────────────────────
 # 全局参数（A股费率）
 # ──────────────────────────────────────────────
-SHARES_PER_STOCK = 500
-COMMISSION_RATE = 0.0003
-MIN_COMMISSION = 5.0
-STAMP_TAX_RATE = 0.0005
-TRANSFER_RATE = 0.00001
-
-
-# ──────────────────────────────────────────────
-# 费用计算 (注意：股数可能会因为复权变成浮点数，将类型改为 float)
-# ──────────────────────────────────────────────
+SHARES_PER_STOCK = 1000        # 单只股票买入股数
+COMMISSION_RATE = 0# 0.0003       # 券商佣金费率
+MIN_COMMISSION = 0#5.0           # 券商最低佣金
+STAMP_TAX_RATE = 0#0.0005        # 印花税率
+TRANSFER_RATE = 0#0.00001        # 过户费率
 
 def _commission(amount: float) -> float:
     return max(amount * COMMISSION_RATE, MIN_COMMISSION)
@@ -43,75 +36,70 @@ def sell_revenue(price: float, shares: float) -> float:
 
 
 # ──────────────────────────────────────────────
-# qlib 初始化 & 行情
+# qlib 初始化 & 行情获取模块
 # ──────────────────────────────────────────────
-
 _qlib_initialized = False
 
 def init_qlib(provider_uri: str):
     global _qlib_initialized
-    if _qlib_initialized:
-        return
+    if _qlib_initialized: return
     import qlib
     from qlib.constant import REG_CN
-
     qlib.init(provider_uri=provider_uri, region=REG_CN)
     _qlib_initialized = True
     print(f"qlib 已初始化，数据源: {provider_uri}")
 
-
 def get_price_info(instruments: list[str], date: str) -> dict[str, dict]:
     """
-    同时获取复权价(close)和复权因子(factor)，并还原出【真实不复权价格】
+    获取真实价格和复权因子。
+    根据反馈，数据源中的 $close 已经是真实未复权价格。
     """
     from qlib.data import D
 
-    if not instruments:
-        return {}
+    if not instruments: return {}
 
-    # 在 Qlib 中，默认的 $close 是复权价
     df = D.features(
         instruments, ["$close", "$factor"],
         start_time=date,
         end_time=date,
         freq="day",
     )
-    if df is None or df.empty:
-        return {}
+    if df is None or df.empty: return {}
 
-    df.columns =["close", "factor"]
+    df.columns = ["close", "factor"]
     df = df.reset_index()
     df = df.dropna(subset=["close"])
 
     result: dict[str, dict] = {}
     for _, row in df.iterrows():
-        adj_close = float(row["close"])
-        # 防止 factor 为空或 0 导致除以 0 报错
+        # ⭐ 核心修复：直接使用 $close 作为真实不复权价格
+        real_price = float(row["close"])
         factor = float(row["factor"]) if not pd.isna(row["factor"]) and float(row["factor"]) != 0 else 1.0
-        
-        # ⭐ 核心修复：真实现价 = 复权价 / 复权因子
-        real_price = adj_close / factor
 
         result[row["instrument"]] = {
             "real_price": real_price,
             "factor": factor
         }
     return result
+
+
 # ──────────────────────────────────────────────
-# 预测数据扫描与去重 (省略不变的辅助函数, 与原版一致)
+# 预测数据扫描与去重模块
 # ──────────────────────────────────────────────
 def get_score_subdirs(score_dir: Path) -> list[Path]:
     if not score_dir.exists(): return []
     subdirs =[d for d in score_dir.iterdir() if d.is_dir() and d.name.startswith("selection_")]
     if not subdirs: return[]
+    
     def _extract_date(subdir: Path) -> str:
         m = re.match(r"selection_(\d{8})_", subdir.name)
         return m.group(1) if m else ""
+        
     subdirs_sorted = sorted(subdirs, key=lambda d: d.name)
     date_to_subdir: dict[str, Path] = {}
     for d in subdirs_sorted:
         date_key = _extract_date(d)
-        if date_key: date_to_subdir[date_key] = d
+        if date_key: date_to_subdir[date_key] = d 
     return sorted(date_to_subdir.values(), key=_extract_date)
 
 def extract_all_dates_from_csv(subdir: Path) -> list[str]:
@@ -150,22 +138,24 @@ def select_trade_candidates(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
     ranked["pos_ratio"] = pd.to_numeric(ranked["pos_ratio"], errors="coerce")
     ranked = ranked.dropna(subset=["avg_score", "pos_ratio"])
     if ranked.empty: return ranked
+    
     ranked = ranked.sort_values(by=["pos_ratio", "avg_score"], ascending=[False, False])
     return ranked.head(top_n)
 
 
+# ──────────────────────────────────────────────
+# 核心业务模块：严格滚动回测
+# ──────────────────────────────────────────────
 def backtest_final(
     score_tables: dict[str, pd.DataFrame],
     top_n: int,
 ):
     predict_dates = list(score_tables.keys())
-    if len(predict_dates) < 2:
-        return [],[]
+    if len(predict_dates) < 2: return [],[]
 
     summary_rows: list[dict] =[]
     detail_rows: list[dict] =[]
     cum_profit = 0.0
-
     previous_positions: list[dict] =[]
 
     for i in range(1, len(predict_dates)):
@@ -173,12 +163,11 @@ def backtest_final(
         today = predict_dates[i]
 
         sell_instruments: list[str] =[]
-        day_sell_total = 0.0
-        day_sell_buy_cost = 0.0
-        day_gross_profit = 0.0
-        day_net_profit = 0.0
-        day_total_fee = 0.0
-        
+        day_sell_total = 0.0      
+        day_sell_buy_cost = 0.0   
+        day_gross_profit = 0.0    
+        day_net_profit = 0.0      
+        day_total_fee = 0.0       
         still_hold: list[dict] =[]
 
         # 1) 卖出上一交易日持仓
@@ -194,15 +183,14 @@ def backtest_final(
 
                 info = sell_info.get(inst)
 
-                # 使用 real_price 判定行情
                 if not info or pd.isna(info["real_price"]) or info["real_price"] <= 0:
                     still_hold.append(pos)
                     continue
                 
-                sp = info["real_price"]   # 这里拿到的就是真实的 8 块钱了
-                sfactor = info["factor"]
+                sp = info["real_price"]   
+                sfactor = info["factor"]  
 
-                # 等效股数：自动处理分红和拆股
+                # 分红/送股依然依靠因子比例调整等效股数
                 equiv_shares = old_shares * (sfactor / bfactor) if bfactor else old_shares
                 
                 sr = sell_revenue(sp, equiv_shares)
@@ -231,6 +219,7 @@ def backtest_final(
                     "股数": round(equiv_shares, 2), 
                     "金额(真金)": round(sr, 2),
                     "手续费": sell_fee,
+                    "毛利润": round(gross, 2),
                     "净利润": round(net, 2),
                 })
 
@@ -250,7 +239,7 @@ def backtest_final(
                 if not info or pd.isna(info["real_price"]) or info["real_price"] <= 0:
                     continue
 
-                bp = info["real_price"]  # 这里也是 8 块钱
+                bp = info["real_price"]
                 bfactor = info["factor"]
 
                 bc = buy_cost(bp, SHARES_PER_STOCK)
@@ -274,7 +263,8 @@ def backtest_final(
                     "股数": SHARES_PER_STOCK,
                     "金额(真金)": round(bc, 2),
                     "手续费": buy_fee,
-                    "净利润": "",
+                    "毛利润": "",
+                    "净利润": "", 
                 })
 
         previous_positions = still_hold + new_positions
@@ -293,7 +283,7 @@ def backtest_final(
             "手续费": round(day_total_fee, 2),
             "毛利润": round(day_gross_profit, 2),
             "净利润": round(day_net_profit, 2),
-            "收益率%": round(return_pct, 4),
+            "日收益率%": round(return_pct, 4),
             "累计净利润": round(cum_profit, 2),
             "买入股票": ",".join(buy_instruments) if buy_instruments else "",
             "卖出股票": ",".join(sell_instruments) if sell_instruments else "",
@@ -321,12 +311,12 @@ def write_outputs(
     df_summary = pd.DataFrame(summary_rows, columns=[
         "交易日期", "预测日期", "买入股票数", "买入总额(真金)",
         "卖出股票数", "卖出总额(真金)", "卖出标的总买入成本",
-        "手续费", "毛利润", "净利润", "收益率%", "累计净利润","买入股票", "卖出股票", 
+        "手续费", "毛利润", "净利润", "日收益率%", "累计净利润","买入股票", "卖出股票", 
     ])
     df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
 
     df_detail = pd.DataFrame(detail_rows, columns=[
-        "交易日期", "股票代码", "操作", "真实价格", "股数", "金额(真金)", "手续费", "净利润",
+        "交易日期", "股票代码", "操作", "真实价格", "股数", "金额(真金)", "手续费", "毛利润", "净利润",
     ])
     df_detail.to_csv(detail_path, index=False, encoding="utf-8-sig")
 
@@ -348,11 +338,11 @@ def write_outputs(
         "总净利(真金)": round(total_net, 2),
         "总投入本金": round(total_sell_cost, 2),
         "平均日净利": avg_net,
-        "真实总收益率": overall_return_pct, 
+        "平均每手盈亏率": overall_return_pct, 
     }
 
 # ──────────────────────────────────────────────
-# 主入口
+# 主入口模块
 # ──────────────────────────────────────────────
 def main(
     provider_uri: str = "~/.qlib/qlib_data/cn_data",
@@ -361,7 +351,8 @@ def main(
     detail_out: str = "./tests/sim_trade_detail.csv",
 ):
     global SHARES_PER_STOCK
-    for _nums in [300, 600, 1000]:
+    
+    for _nums in[300, 600, 1000]:
         _new_shuffix = f"-{_nums}"
         SHARES_PER_STOCK = _nums
         provider_uri = str(Path(provider_uri).expanduser())
@@ -400,7 +391,7 @@ def main(
         if compare_rows:
             compare_df = pd.DataFrame(compare_rows, columns=[
                 "top_n", "交易天数", "含卖出天数", "盈利天数", "胜率",
-                "总净利(真金)","总投入本金", "平均日净利", "真实总收益率"
+                "总净利(真金)","总投入本金", "平均日净利", "平均每手盈亏率"
             ])
             compare_path = out_path.with_name(f"{out_path.stem}_compare{_new_shuffix}{out_path.suffix}")
             compare_df.to_csv(compare_path, index=False, encoding="utf-8-sig")
