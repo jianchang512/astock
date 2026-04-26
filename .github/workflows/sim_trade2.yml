@@ -93,7 +93,9 @@ jobs:
         run: |
           python tests/sim_trade_ci10000.py \
           --provider_uri=~/.qlib/qlib_data/cn_data \
-          --qlib_score_dir=./qlib_score_csv 
+          --qlib_score_dir=./qlib_score_csv \
+          --out=./tests10000/sim_trade_result.csv \
+          --detail_out=./tests10000/sim_trade_detail.csv
 
       # ── 7. 提交结果回 main 分支 ──
       - name: 提交模拟交易结果

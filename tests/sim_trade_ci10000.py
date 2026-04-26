@@ -394,10 +394,10 @@ OUT_DIR="tests10000"
 def main(
     provider_uri: str = "~/.qlib/qlib_data/cn_data",
     qlib_score_dir: str = "./qlib_score_csv",
+    out= f"./tests10000/sim_trade_result.csv",
+    detail_out = f"./tests10000/sim_trade_detail.csv",
 ):
     global PER_STOCK_BUDGET
-    out= f"./{OUT_DIR}/sim_trade_result.csv",
-    detail_out = f"./{OUT_DIR}/sim_trade_detail.csv",
     
     # 采用金额循环，保留你原有代码结构的拓展性。目前仅跑10000元一档，
     # 如果日后想对比 1万、2万、5万的结果，只需把[10000] 改成[10000, 20000, 50000] 即可。
