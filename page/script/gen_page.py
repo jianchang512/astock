@@ -59,7 +59,7 @@ def generate_echarts_script(csv_path: str | Path) -> str:
     # 确定列名 (兼容可能的列名变体)
     date_col = "交易日期"
     profit_col = "累计净利润"
-    return_col = "收益率%" if "收益率%" in df.columns else "收益率"
+    return_col = "日收益率%"
 
     # 校验必要列是否存在
     missing_cols = [col for col in[date_col, profit_col, return_col] if col not in df.columns]
