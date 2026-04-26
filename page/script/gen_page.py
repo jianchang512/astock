@@ -769,11 +769,11 @@ def generate_pages_auto() -> None:
         "sim_trade_result_compare-1000": "S",
         "sim_trade_result_compare-10000元": "T",
         
-        "sim_trade_result_top1-10000元.csv": "U",
-        "sim_trade_result_top3-10000元.csv": "V",
-        "sim_trade_result_top5-10000元.csv": "W",
-        "sim_trade_result_top10-10000元.csv": "X",
-        "sim_trade_result_top15-10000元.csv": "Y",
+        "sim_trade_result_top1-10000元": "U",
+        "sim_trade_result_top3-10000元": "V",
+        "sim_trade_result_top5-10000元": "W",
+        "sim_trade_result_top10-10000元": "X",
+        "sim_trade_result_top15-10000元": "Y",
 
         
     }
