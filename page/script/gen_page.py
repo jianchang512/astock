@@ -206,9 +206,16 @@ def csv_to_md_sim():
         "sim_trade_result_top15-600.csv": "买入前15只[每只600股]",
         "sim_trade_result_top15-1000.csv": "买入前15只[每只1000股]",
         
+        "sim_trade_result_top1-10000.csv": "买入前1只[每只10000元]",
+        "sim_trade_result_top3-10000.csv": "买入前3只[每只10000元]",
+        "sim_trade_result_top5-10000.csv": "买入前5只[每只10000元]",
+        "sim_trade_result_top10-10000.csv": "买入前10只[每只10000元]",
+        "sim_trade_result_top15-10000.csv": "买入前15只[每只10000元]",
+
         "sim_trade_result_compare-300.csv": "收益对比[每只买入300股]",
         "sim_trade_result_compare-600.csv": "收益对比[每只买入600股]",
         "sim_trade_result_compare-1000.csv": "收益对比[每只买入1000股]",
+        "sim_trade_result_compare-10000.csv": "收益对比[每只买入10000元]",
     }
     
     _duibi=""
@@ -757,9 +764,18 @@ def generate_pages_auto() -> None:
         "sim_trade_result_top15-600": "O",
         "sim_trade_result_top15-1000": "P",
         
-        "sim_trade_result_compare-300": "Q",
-        "sim_trade_result_compare-600": "R",
-        "sim_trade_result_compare-1000": "S",
+        
+        "sim_trade_result_top1-10000.csv": "Q",
+        "sim_trade_result_top3-10000.csv": "R",
+        "sim_trade_result_top5-10000.csv": "S",
+        "sim_trade_result_top10-10000.csv": "T",
+        "sim_trade_result_top15-10000.csv": "U",
+
+        
+        "sim_trade_result_compare-300": "V",
+        "sim_trade_result_compare-600": "W",
+        "sim_trade_result_compare-1000": "X",
+        "sim_trade_result_compare-10000": "Y",
     }
 
     for subdir in sorted(pages_dir.iterdir()):
