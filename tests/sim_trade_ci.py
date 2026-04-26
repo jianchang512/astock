@@ -2,6 +2,19 @@
 # -*- coding: utf-8 -*-
 """
 模拟交易 CI 版 —— 真实资金流 + 现价显示修复版
+
+==============================================================================
+【功能概述】
+本脚本用于针对 Qlib 预测结果进行“按日滚动”的 A 股历史回测。
+核心特色在于：
+1. 真实资金流修复：通过复权因子将 Qlib 默认的复权价还原为真实不复权价，以计算真实的买卖投入。
+2. 完美处理分红送转：通过记录买入和卖出时的“复权因子(factor)”，自动计算出
+   除权除息后的等效持仓股数（红利再投/送股自动计算）。
+3. 停牌处理：若某股票在计划卖出日无行情（停牌），会自动结转至下一交易日继续持有。
+4. 自动化对比：一次性跑完不同单笔买入股数(300/600/1000)以及不同 TopN(1/3/5/10/15)
+   的结果，并生成详细对比报表。
+
+==============================================================================
 """
 
 from __future__ import annotations
@@ -12,13 +25,23 @@ from pathlib import Path
 import pandas as pd
 
 # ──────────────────────────────────────────────
-# 全局参数（A股费率）
+# 全局参数（A股费率及价格还原配置）
 # ──────────────────────────────────────────────
 SHARES_PER_STOCK = 1000        # 单只股票买入股数
 COMMISSION_RATE = 0# 0.0003       # 券商佣金费率
 MIN_COMMISSION = 0#5.0           # 券商最低佣金
 STAMP_TAX_RATE = 0#0.0005        # 印花税率
 TRANSFER_RATE = 0#0.00001        # 过户费率
+
+# ==========================================
+# 复权因子还原真实价格配置
+# Qlib 数据集中的 $close 通常为复权价。为了计算真实的资金流，需要还原为真实价格。
+# 模式 1: 真实价格 = $close / $factor (最常见，如 Qlib 默认的 Yahoo / Tushare 复权处理)
+# 模式 2: 真实价格 = $close * $factor (部分特定格式的数据集)
+# 模式 0: $close 本身就是真实不复权价格 (无需转换)
+# ==========================================
+PRICE_RESTORE_MODE = 1 
+
 
 def _commission(amount: float) -> float:
     return max(amount * COMMISSION_RATE, MIN_COMMISSION)
@@ -51,8 +74,7 @@ def init_qlib(provider_uri: str):
 
 def get_price_info(instruments: list[str], date: str) -> dict[str, dict]:
     """
-    获取真实价格和复权因子。
-    根据反馈，数据源中的 $close 已经是真实未复权价格。
+    获取复权价格和复权因子，并推导出真实的未复权价格。
     """
     from qlib.data import D
 
@@ -72,11 +94,19 @@ def get_price_info(instruments: list[str], date: str) -> dict[str, dict]:
 
     result: dict[str, dict] = {}
     for _, row in df.iterrows():
-        # ⭐ 核心修复：直接使用 $close 作为真实不复权价格
-        real_price = float(row["close"])
+        model_price = float(row["close"])
         factor = float(row["factor"]) if not pd.isna(row["factor"]) and float(row["factor"]) != 0 else 1.0
 
+        # ⭐ 核心修复：根据复权因子还原真实价格
+        if PRICE_RESTORE_MODE == 1:
+            real_price = model_price / factor
+        elif PRICE_RESTORE_MODE == 2:
+            real_price = model_price * factor
+        else:
+            real_price = model_price
+
         result[row["instrument"]] = {
+            "model_price": model_price,
             "real_price": real_price,
             "factor": factor
         }
@@ -176,7 +206,7 @@ def backtest_final(
 
             for pos in previous_positions:
                 inst = pos["instrument"]
-                bp = pos["buy_price"]
+                bp = pos["buy_real_price"]
                 bc = pos["buy_cost"]
                 bfactor = pos["buy_factor"]
                 old_shares = pos["shares"]
@@ -187,6 +217,7 @@ def backtest_final(
                     still_hold.append(pos)
                     continue
                 
+                model_sp = info["model_price"]
                 sp = info["real_price"]   
                 sfactor = info["factor"]  
 
@@ -215,7 +246,9 @@ def backtest_final(
                     "交易日期": today,
                     "股票代码": inst,
                     "操作": "卖出",
+                    "模型复权价": round(model_sp, 4),
                     "真实价格": round(sp, 4),
+                    "复权因子": round(sfactor, 4),
                     "股数": round(equiv_shares, 2), 
                     "金额(真金)": round(sr, 2),
                     "手续费": sell_fee,
@@ -239,16 +272,18 @@ def backtest_final(
                 if not info or pd.isna(info["real_price"]) or info["real_price"] <= 0:
                     continue
 
+                model_bp = info["model_price"]
                 bp = info["real_price"]
                 bfactor = info["factor"]
 
+                # ⭐ 所有投入产出，必须基于真实未复权价格计算
                 bc = buy_cost(bp, SHARES_PER_STOCK)
                 buy_amount = bp * SHARES_PER_STOCK
                 buy_fee = round(bc - buy_amount, 2)
 
                 new_positions.append({
                     "instrument": inst,
-                    "buy_price": bp,
+                    "buy_real_price": bp,
                     "buy_cost": bc,
                     "buy_factor": bfactor,
                     "shares": SHARES_PER_STOCK
@@ -259,7 +294,9 @@ def backtest_final(
                     "交易日期": today,
                     "股票代码": inst,
                     "操作": "买入",
+                    "模型复权价": round(model_bp, 4),
                     "真实价格": round(bp, 4),
+                    "复权因子": round(bfactor, 4),
                     "股数": SHARES_PER_STOCK,
                     "金额(真金)": round(bc, 2),
                     "手续费": buy_fee,
@@ -316,7 +353,8 @@ def write_outputs(
     df_summary.to_csv(out_path, index=False, encoding="utf-8-sig")
 
     df_detail = pd.DataFrame(detail_rows, columns=[
-        "交易日期", "股票代码", "操作", "真实价格", "股数", "金额(真金)", "手续费", "毛利润", "净利润",
+        "交易日期", "股票代码", "操作", "模型复权价", "真实价格", "复权因子", 
+        "股数", "金额(真金)", "手续费", "毛利润", "净利润",
     ])
     df_detail.to_csv(detail_path, index=False, encoding="utf-8-sig")
 
