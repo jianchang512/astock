@@ -13,6 +13,7 @@
 3. 动态买入股数计算：支持设定单只股票的目标买入金额（默认10000元），
    自动按当时真实价格计算出应买股数，支持按百股"四舍五入"(>=50进位)并保证最低买入100股。
 4. 自动化对比：一次性跑完不同 TopN(1/3/5/10/15) 的结果，并生成详细对比报表。
+5. 多日持仓逻辑：支持配置持仓天数（默认 T+3 卖出）。
 
 ==============================================================================
 """
@@ -32,6 +33,8 @@ COMMISSION_RATE = 0# 0.0003       # 券商佣金费率
 MIN_COMMISSION = 0#5.0           # 券商最低佣金
 STAMP_TAX_RATE = 0#0.0005        # 印花税率
 TRANSFER_RATE = 0#0.00001        # 过户费率
+
+HOLDING_DAYS = 3               # 目标持有交易天数（3表示T+3卖出）
 
 # ==========================================
 # 复权因子还原真实价格配置
@@ -200,61 +203,78 @@ def backtest_final(
         day_total_fee = 0.0       
         still_hold: list[dict] =[]
 
-        # 1) 卖出上一交易日持仓
+        # 1) 卖出达到持有天数的持仓
         if previous_positions:
-            sell_info = get_price_info([p["instrument"] for p in previous_positions], today)
-
+            to_sell_candidates =[]
+            
+            # 判断持有天数，分类决定是卖出还是继续持有
             for pos in previous_positions:
-                inst = pos["instrument"]
-                bp = pos["buy_real_price"]
-                bc = pos["buy_cost"]
-                bfactor = pos["buy_factor"]
-                old_shares = pos["shares"]
-
-                info = sell_info.get(inst)
-
-                if not info or pd.isna(info["real_price"]) or info["real_price"] <= 0:
+                pos["held_days"] = pos.get("held_days", 0) + 1
+                
+                if pos["held_days"] < HOLDING_DAYS:
+                    # 持有天数不足，继续持仓过夜
                     still_hold.append(pos)
-                    continue
-                
-                model_sp = info["model_price"]
-                sp = info["real_price"]   
-                sfactor = info["factor"]  
+                else:
+                    # 达到卖出条件
+                    to_sell_candidates.append(pos)
 
-                # 分红/送股依然依靠因子比例调整等效股数
-                equiv_shares = old_shares * (sfactor / bfactor) if bfactor else old_shares
-                
-                sr = sell_revenue(sp, equiv_shares)
-                buy_amount = bp * old_shares
-                sell_amount = sp * equiv_shares
-                
-                buy_fee = round(bc - buy_amount, 2)
-                sell_fee = round(sell_amount - sr, 2)
-                
-                gross = sell_amount - buy_amount
-                net = sr - bc
-                fee = round(buy_fee + sell_fee, 2)
+            if to_sell_candidates:
+                # 仅对需要卖出的股票提取去重后的代码，查询今日股价
+                sell_insts = list(set(p["instrument"] for p in to_sell_candidates))
+                sell_info = get_price_info(sell_insts, today)
 
-                sell_instruments.append(inst)
-                day_sell_total += sr
-                day_sell_buy_cost += bc
-                day_gross_profit += gross
-                day_net_profit += net
-                day_total_fee += fee
+                for pos in to_sell_candidates:
+                    inst = pos["instrument"]
+                    bp = pos["buy_real_price"]
+                    bc = pos["buy_cost"]
+                    bfactor = pos["buy_factor"]
+                    old_shares = pos["shares"]
 
-                detail_rows.append({
-                    "交易日期": today,
-                    "股票代码": inst,
-                    "操作": "卖出",
-                    "模型复权价": round(model_sp, 4),
-                    "真实价格": round(sp, 4),
-                    "复权因子": round(sfactor, 4),
-                    "股数": round(equiv_shares, 2), 
-                    "金额(真金)": round(sr, 2),
-                    "手续费": sell_fee,
-                    "毛利润": round(gross, 2),
-                    "净利润": round(net, 2),
-                })
+                    info = sell_info.get(inst)
+
+                    # 如果今日该股无数据或停牌，卖不出去，则继续持有
+                    if not info or pd.isna(info["real_price"]) or info["real_price"] <= 0:
+                        still_hold.append(pos)
+                        continue
+                    
+                    model_sp = info["model_price"]
+                    sp = info["real_price"]   
+                    sfactor = info["factor"]  
+
+                    # 分红/送股依然依靠因子比例调整等效股数
+                    equiv_shares = old_shares * (sfactor / bfactor) if bfactor else old_shares
+                    
+                    sr = sell_revenue(sp, equiv_shares)
+                    buy_amount = bp * old_shares
+                    sell_amount = sp * equiv_shares
+                    
+                    buy_fee = round(bc - buy_amount, 2)
+                    sell_fee = round(sell_amount - sr, 2)
+                    
+                    gross = sell_amount - buy_amount
+                    net = sr - bc
+                    fee = round(buy_fee + sell_fee, 2)
+
+                    sell_instruments.append(inst)
+                    day_sell_total += sr
+                    day_sell_buy_cost += bc
+                    day_gross_profit += gross
+                    day_net_profit += net
+                    day_total_fee += fee
+
+                    detail_rows.append({
+                        "交易日期": today,
+                        "股票代码": inst,
+                        "操作": "卖出",
+                        "模型复权价": round(model_sp, 4),
+                        "真实价格": round(sp, 4),
+                        "复权因子": round(sfactor, 4),
+                        "股数": round(equiv_shares, 2), 
+                        "金额(真金)": round(sr, 2),
+                        "手续费": sell_fee,
+                        "毛利润": round(gross, 2),
+                        "净利润": round(net, 2),
+                    })
 
         # 2) 买入新股票
         buy_instruments: list[str] =[]
@@ -292,7 +312,8 @@ def backtest_final(
                     "buy_real_price": bp,
                     "buy_cost": bc,
                     "buy_factor": bfactor,
-                    "shares": buy_shares
+                    "shares": buy_shares,
+                    "held_days": 0   # ⭐ 新买入的持仓，初始化持有天数为 0
                 })
                 buy_total += bc
 
@@ -310,6 +331,7 @@ def backtest_final(
                     "净利润": "", 
                 })
 
+        # 下个交易日的持仓 = 没有卖出的历史持仓 + 今天刚买的新持仓
         previous_positions = still_hold + new_positions
 
         cum_profit += day_net_profit
@@ -335,7 +357,7 @@ def backtest_final(
         action_desc =[]
         if sell_instruments: action_desc.append(f"卖出{len(sell_instruments)}只")
         if buy_instruments: action_desc.append(f"买入{len(buy_instruments)}只")
-        if still_hold: action_desc.append(f"滞留{len(still_hold)}只")
+        if still_hold: action_desc.append(f"持仓{len(still_hold)}只")
         if not action_desc: action_desc.append("无交易")
 
         print(
@@ -389,6 +411,7 @@ def write_outputs(
 # 主入口模块
 # ──────────────────────────────────────────────
 
+OUT_DIR="tests10000"
 
 def main(
     provider_uri: str = "~/.qlib/qlib_data/cn_data",
@@ -401,7 +424,7 @@ def main(
     # 采用金额循环，保留你原有代码结构的拓展性。目前仅跑10000元一档，
     # 如果日后想对比 1万、2万、5万的结果，只需把[10000] 改成[10000, 20000, 50000] 即可。
     for _budget in [10000]:
-        _new_shuffix = f"-{_budget}元"
+        _new_shuffix = f"-{_budget}元-3"
         PER_STOCK_BUDGET = _budget
         provider_uri = str(Path(provider_uri).expanduser())
         score_dir = Path(qlib_score_dir)
@@ -410,6 +433,7 @@ def main(
 
         print(f"\n====================================")
         print(f"初始化 qlib... 每次每只股票目标买入金额: {_budget}元")
+        print(f"设定持仓天数 (HOLDING_DAYS): {HOLDING_DAYS} 天")
         print(f"====================================")
         init_qlib(provider_uri)
 

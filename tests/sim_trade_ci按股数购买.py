@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-模拟交易 CI 版 —— 真实资金流 + 按固定金额动态股数版
+模拟交易 CI 版 —— 真实资金流 + 现价显示修复版
 
 ==============================================================================
 【功能概述】
@@ -10,9 +10,9 @@
 1. 真实资金流修复：通过复权因子将 Qlib 默认的复权价还原为真实不复权价，以计算真实的买卖投入。
 2. 完美处理分红送转：通过记录买入和卖出时的“复权因子(factor)”，自动计算出
    除权除息后的等效持仓股数（红利再投/送股自动计算）。
-3. 动态买入股数计算：支持设定单只股票的目标买入金额（默认10000元），
-   自动按当时真实价格计算出应买股数，支持按百股"四舍五入"(>=50进位)并保证最低买入100股。
-4. 自动化对比：一次性跑完不同 TopN(1/3/5/10/15) 的结果，并生成详细对比报表。
+3. 停牌处理：若某股票在计划卖出日无行情（停牌），会自动结转至下一交易日继续持有。
+4. 自动化对比：一次性跑完不同单笔买入股数(300/600/1000)以及不同 TopN(1/3/5/10/15)
+   的结果，并生成详细对比报表。
 
 ==============================================================================
 """
@@ -25,9 +25,9 @@ from pathlib import Path
 import pandas as pd
 
 # ──────────────────────────────────────────────
-# 全局参数（A股费率及资金配置）
+# 全局参数（A股费率及价格还原配置）
 # ──────────────────────────────────────────────
-PER_STOCK_BUDGET = 10000       # 每只股票目标买入总额 (元)
+SHARES_PER_STOCK = 1000        # 单只股票买入股数
 COMMISSION_RATE = 0# 0.0003       # 券商佣金费率
 MIN_COMMISSION = 0#5.0           # 券商最低佣金
 STAMP_TAX_RATE = 0#0.0005        # 印花税率
@@ -117,7 +117,7 @@ def get_price_info(instruments: list[str], date: str) -> dict[str, dict]:
 # 预测数据扫描与去重模块
 # ──────────────────────────────────────────────
 def get_score_subdirs(score_dir: Path) -> list[Path]:
-    if not score_dir.exists(): return[]
+    if not score_dir.exists(): return []
     subdirs =[d for d in score_dir.iterdir() if d.is_dir() and d.name.startswith("selection_")]
     if not subdirs: return[]
     
@@ -276,15 +276,9 @@ def backtest_final(
                 bp = info["real_price"]
                 bfactor = info["factor"]
 
-                # ⭐ 基于目标金额和真实价格，计算本次需买入的股数
-                # 余数 >= 50 时进位为 100，否则舍弃。且强制最低不低于 100 股
-                raw_shares = PER_STOCK_BUDGET / bp
-                buy_shares = int((raw_shares + 50) // 100) * 100
-                buy_shares = max(100, buy_shares)
-
-                # ⭐ 投入产出基于计算后得出的实际买入股数进行核算
-                bc = buy_cost(bp, buy_shares)
-                buy_amount = bp * buy_shares
+                # ⭐ 所有投入产出，必须基于真实未复权价格计算
+                bc = buy_cost(bp, SHARES_PER_STOCK)
+                buy_amount = bp * SHARES_PER_STOCK
                 buy_fee = round(bc - buy_amount, 2)
 
                 new_positions.append({
@@ -292,7 +286,7 @@ def backtest_final(
                     "buy_real_price": bp,
                     "buy_cost": bc,
                     "buy_factor": bfactor,
-                    "shares": buy_shares
+                    "shares": SHARES_PER_STOCK
                 })
                 buy_total += bc
 
@@ -303,7 +297,7 @@ def backtest_final(
                     "模型复权价": round(model_bp, 4),
                     "真实价格": round(bp, 4),
                     "复权因子": round(bfactor, 4),
-                    "股数": buy_shares,
+                    "股数": SHARES_PER_STOCK,
                     "金额(真金)": round(bc, 2),
                     "手续费": buy_fee,
                     "毛利润": "",
@@ -388,28 +382,24 @@ def write_outputs(
 # ──────────────────────────────────────────────
 # 主入口模块
 # ──────────────────────────────────────────────
-
-
 def main(
     provider_uri: str = "~/.qlib/qlib_data/cn_data",
     qlib_score_dir: str = "./qlib_score_csv",
-    out= f"./tests/sim_trade_result.csv",
-    detail_out = f"./tests/sim_trade_detail.csv",
+    out: str = "./tests/sim_trade_result.csv",
+    detail_out: str = "./tests/sim_trade_detail.csv",
 ):
-    global PER_STOCK_BUDGET
+    global SHARES_PER_STOCK
     
-    # 采用金额循环，保留你原有代码结构的拓展性。目前仅跑10000元一档，
-    # 如果日后想对比 1万、2万、5万的结果，只需把[10000] 改成[10000, 20000, 50000] 即可。
-    for _budget in [10000]:
-        _new_shuffix = f"-{_budget}元"
-        PER_STOCK_BUDGET = _budget
+    for _nums in[300, 600, 1000]:
+        _new_shuffix = f"-{_nums}"
+        SHARES_PER_STOCK = _nums
         provider_uri = str(Path(provider_uri).expanduser())
         score_dir = Path(qlib_score_dir)
         if not score_dir.is_absolute():
             score_dir = Path.cwd() / score_dir
 
         print(f"\n====================================")
-        print(f"初始化 qlib... 每次每只股票目标买入金额: {_budget}元")
+        print(f"初始化 qlib... 每次买入股数: {_nums}")
         print(f"====================================")
         init_qlib(provider_uri)
 
@@ -443,7 +433,7 @@ def main(
             ])
             compare_path = out_path.with_name(f"{out_path.stem}_compare{_new_shuffix}{out_path.suffix}")
             compare_df.to_csv(compare_path, index=False, encoding="utf-8-sig")
-            print(f"\nTopN 对比汇总 ({_budget}元) 已保存: {compare_path}")
+            print(f"\nTopN 对比汇总 ({_nums}股) 已保存: {compare_path}")
             print(compare_df.to_string(index=False))
 
 if __name__ == "__main__":

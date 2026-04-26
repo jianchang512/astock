@@ -389,12 +389,13 @@ def write_outputs(
 # 主入口模块
 # ──────────────────────────────────────────────
 
+OUT_DIR="tests10000"
 
 def main(
     provider_uri: str = "~/.qlib/qlib_data/cn_data",
     qlib_score_dir: str = "./qlib_score_csv",
-    out= f"./tests/sim_trade_result.csv",
-    detail_out = f"./tests/sim_trade_detail.csv",
+    out= f"./tests10000/sim_trade_result.csv",
+    detail_out = f"./tests10000/sim_trade_detail.csv",
 ):
     global PER_STOCK_BUDGET
     
