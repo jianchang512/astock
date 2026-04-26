@@ -62,16 +62,16 @@ def init_qlib(provider_uri: str):
 
 def get_price_info(instruments: list[str], date: str) -> dict[str, dict]:
     """
-    同时获取真实价格(close)和复权因子(factor)
+    同时获取复权价(close)和复权因子(factor)，并还原出【真实不复权价格】
     """
     from qlib.data import D
 
     if not instruments:
         return {}
 
-    # $close 通常是真实不复权收盘价，$factor 是累积复权因子
+    # 在 Qlib 中，默认的 $close 是复权价
     df = D.features(
-        instruments,["$close", "$factor"],
+        instruments, ["$close", "$factor"],
         start_time=date,
         end_time=date,
         freq="day",
@@ -85,13 +85,18 @@ def get_price_info(instruments: list[str], date: str) -> dict[str, dict]:
 
     result: dict[str, dict] = {}
     for _, row in df.iterrows():
+        adj_close = float(row["close"])
+        # 防止 factor 为空或 0 导致除以 0 报错
+        factor = float(row["factor"]) if not pd.isna(row["factor"]) and float(row["factor"]) != 0 else 1.0
+        
+        # ⭐ 核心修复：真实现价 = 复权价 / 复权因子
+        real_price = adj_close / factor
+
         result[row["instrument"]] = {
-            "close": float(row["close"]),
-            "factor": float(row["factor"]) if not pd.isna(row["factor"]) else 1.0
+            "real_price": real_price,
+            "factor": factor
         }
     return result
-
-
 # ──────────────────────────────────────────────
 # 预测数据扫描与去重 (省略不变的辅助函数, 与原版一致)
 # ──────────────────────────────────────────────
@@ -149,17 +154,13 @@ def select_trade_candidates(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
     return ranked.head(top_n)
 
 
-# ──────────────────────────────────────────────
-# 最终增强版：严格滚动回测（包含复权因子调整逻辑）
-# ──────────────────────────────────────────────
-
 def backtest_final(
     score_tables: dict[str, pd.DataFrame],
     top_n: int,
 ):
     predict_dates = list(score_tables.keys())
     if len(predict_dates) < 2:
-        return [], []
+        return [],[]
 
     summary_rows: list[dict] =[]
     detail_rows: list[dict] =[]
@@ -193,14 +194,15 @@ def backtest_final(
 
                 info = sell_info.get(inst)
 
-                if not info or pd.isna(info["close"]) or info["close"] <= 0:
+                # 使用 real_price 判定行情
+                if not info or pd.isna(info["real_price"]) or info["real_price"] <= 0:
                     still_hold.append(pos)
                     continue
                 
-                sp = info["close"]
+                sp = info["real_price"]   # 这里拿到的就是真实的 8 块钱了
                 sfactor = info["factor"]
 
-                # ⭐ 核心：依靠前后复权因子计算等效股数（处理分红/送转）
+                # 等效股数：自动处理分红和拆股
                 equiv_shares = old_shares * (sfactor / bfactor) if bfactor else old_shares
                 
                 sr = sell_revenue(sp, equiv_shares)
@@ -226,7 +228,7 @@ def backtest_final(
                     "股票代码": inst,
                     "操作": "卖出",
                     "真实价格": round(sp, 4),
-                    "股数": round(equiv_shares, 2), # 这里可能是小数，代表分红送股后的等效股数
+                    "股数": round(equiv_shares, 2), 
                     "金额(真金)": round(sr, 2),
                     "手续费": sell_fee,
                     "净利润": round(net, 2),
@@ -245,13 +247,12 @@ def backtest_final(
             buy_info = get_price_info(buy_instruments, today)
             for inst in buy_instruments:
                 info = buy_info.get(inst)
-                if not info or pd.isna(info["close"]) or info["close"] <= 0:
+                if not info or pd.isna(info["real_price"]) or info["real_price"] <= 0:
                     continue
 
-                bp = info["close"]
+                bp = info["real_price"]  # 这里也是 8 块钱
                 bfactor = info["factor"]
 
-                # 真金白银买入成本
                 bc = buy_cost(bp, SHARES_PER_STOCK)
                 buy_amount = bp * SHARES_PER_STOCK
                 buy_fee = round(bc - buy_amount, 2)
@@ -310,7 +311,6 @@ def backtest_final(
         )
 
     return summary_rows, detail_rows
-
 
 def write_outputs(
     summary_rows: list[dict],
