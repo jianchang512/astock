@@ -764,18 +764,18 @@ def generate_pages_auto() -> None:
         "sim_trade_result_top15-600": "O",
         "sim_trade_result_top15-1000": "P",
         
+        "sim_trade_result_compare-300": "Q",
+        "sim_trade_result_compare-600": "R",
+        "sim_trade_result_compare-1000": "S",
+        "sim_trade_result_compare-10000元": "T",
         
-        "sim_trade_result_top1-10000.csv": "Q",
-        "sim_trade_result_top3-10000.csv": "R",
-        "sim_trade_result_top5-10000.csv": "S",
-        "sim_trade_result_top10-10000.csv": "T",
-        "sim_trade_result_top15-10000.csv": "U",
+        "sim_trade_result_top1-10000元.csv": "U",
+        "sim_trade_result_top3-10000元.csv": "V",
+        "sim_trade_result_top5-10000元.csv": "W",
+        "sim_trade_result_top10-10000元.csv": "X",
+        "sim_trade_result_top15-10000元.csv": "Y",
 
         
-        "sim_trade_result_compare-300": "V",
-        "sim_trade_result_compare-600": "W",
-        "sim_trade_result_compare-1000": "X",
-        "sim_trade_result_compare-10000": "Y",
     }
 
     for subdir in sorted(pages_dir.iterdir()):
