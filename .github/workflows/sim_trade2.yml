@@ -91,11 +91,9 @@ jobs:
       # ── 6. 运行模拟交易 ──
       - name: 运行模拟交易
         run: |
-          python tests/sim_trade_ci-3.py \
+          python tests/sim_trade_ci10000.py \
           --provider_uri=~/.qlib/qlib_data/cn_data \
-          --qlib_score_dir=./qlib_score_csv \
-          --out=./tests/sim_trade_result.csv \
-          --detail_out=./tests/sim_trade_detail.csv
+          --qlib_score_dir=./qlib_score_csv 
 
       # ── 7. 提交结果回 main 分支 ──
       - name: 提交模拟交易结果
@@ -104,11 +102,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
           git add -f \
-            tests/sim_trade_result_top1-3.csv tests/sim_trade_detail_top1-3.csv \
-            tests/sim_trade_result_top3-3.csv tests/sim_trade_detail_top3-3.csv \
-            tests/sim_trade_result_top5-3.csv tests/sim_trade_detail_top5-3.csv \
-            tests/sim_trade_result_top10-3.csv tests/sim_trade_detail_top10-3.csv \
-            tests/sim_trade_result_compare-3.csv 2>/dev/null || true
+            tests10000/*.csv 2>/dev/null || true
 
           if git diff --cached --quiet; then
             echo "模拟交易结果无变化，跳过推送。"
