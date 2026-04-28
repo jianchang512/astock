@@ -1,0 +1,99 @@
+
+<!-- 引入 ECharts -->
+<script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
+
+<!-- 图表容器 -->
+<div id="chart-return" style="width: 100%; height: 400px; margin-bottom: 40px;"></div>
+<div id="chart-profit" style="width: 100%; height: 400px;"></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // === 图表1：收益率变化趋势 ===
+    var chartReturn = echarts.init(document.getElementById('chart-return'));
+    var optionReturn = {
+        title: {
+            text: '日收益率变化趋势',
+            left: 'center'
+        },
+        tooltip: {
+            trigger: 'axis',
+            formatter: '{b}<br/>收益率: {c}%'
+        },
+        xAxis: {
+            type: 'category',
+            data: ["2026-03-10", "2026-03-11", "2026-03-12", "2026-03-13", "2026-03-16", "2026-03-17", "2026-03-18", "2026-03-19", "2026-03-20", "2026-03-23", "2026-03-24", "2026-03-25", "2026-03-26", "2026-03-27", "2026-03-30", "2026-03-31", "2026-04-01", "2026-04-02", "2026-04-03", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10", "2026-04-13", "2026-04-14", "2026-04-15", "2026-04-16", "2026-04-17", "2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24", "2026-04-27", "2026-04-28"],
+            boundaryGap: false
+        },
+        yAxis: {
+            type: 'value',
+            name: '收益率 (%)',
+            axisLabel: { formatter: '{value}%' }
+        },
+        dataZoom:[
+            { type: 'inside', start: 0, end: 100 },
+            { type: 'slider', start: 0, end: 100 }
+        ],
+        series:[{
+            data: [0.0, 0.8974, 0.8783, 0.195, 0.3999, 0.5894, -0.4573, 0.5687, -1.8508, -2.8943, 0.9932, 0.5751, -2.4157, -0.4825, 0.1208, -0.3715, 0.5043, 0.9091, -1.1824, -0.816, 2.5266, -0.177, -0.3456, -0.8402, -0.3775, -0.1429, 0.1371, -0.8686, 0.6933, -1.2914, -0.0706, -0.3112, 0.2655, -0.3105, 0.8148],
+            type: 'line',
+            smooth: true,
+            itemStyle: { color: '#ee6666' },
+            markLine: {
+                data:[{ type: 'average', name: '平均值' }, { yAxis: 0, name: '零刻度' }],
+                label: { formatter: '{b}: {c}' }
+            }
+        }]
+    };
+    chartReturn.setOption(optionReturn);
+
+    // === 图表2：累计净利润变化趋势 ===
+    var chartProfit = echarts.init(document.getElementById('chart-profit'));
+    var optionProfit = {
+        title: {
+            text: '累计净利润变化趋势',
+            left: 'center'
+        },
+        tooltip: {
+            trigger: 'axis',
+            formatter: '{b}<br/>累计净利润: ¥{c}'
+        },
+        xAxis: {
+            type: 'category',
+            data: ["2026-03-10", "2026-03-11", "2026-03-12", "2026-03-13", "2026-03-16", "2026-03-17", "2026-03-18", "2026-03-19", "2026-03-20", "2026-03-23", "2026-03-24", "2026-03-25", "2026-03-26", "2026-03-27", "2026-03-30", "2026-03-31", "2026-04-01", "2026-04-02", "2026-04-03", "2026-04-07", "2026-04-08", "2026-04-09", "2026-04-10", "2026-04-13", "2026-04-14", "2026-04-15", "2026-04-16", "2026-04-17", "2026-04-20", "2026-04-21", "2026-04-22", "2026-04-23", "2026-04-24", "2026-04-27", "2026-04-28"],
+            boundaryGap: false
+        },
+        yAxis: {
+            type: 'value',
+            name: '累计净利润 (元)',
+            axisLabel: { formatter: '¥{value}' }
+        },
+        dataZoom:[
+            { type: 'inside', start: 0, end: 100 },
+            { type: 'slider', start: 0, end: 100 }
+        ],
+        series:[{
+            data: [0.0, 256.57, 381.09, 483.45, 616.03, 878.28, 779.04, 1279.64, -171.86, -2926.92, -2522.96, -1720.04, -4743.37, -4922.57, -4880.94, -5007.58, -4778.48, -4507.13, -4855.83, -5122.56, -2165.94, -2232.41, -2343.84, -2895.4, -2993.52, -3039.44, -2972.25, -3398.63, -2759.76, -4046.34, -4071.96, -4273.9, -4182.13, -4387.63, -4170.08],
+            type: 'line',
+            smooth: true,
+            itemStyle: { color: '#5470c6' },
+            areaStyle: {
+                opacity: 0.3,
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1,[
+                    {offset: 0, color: 'rgba(84, 112, 198, 0.8)'},
+                    {offset: 1, color: 'rgba(84, 112, 198, 0.1)'}
+                ])
+            },
+            markLine: {
+                data:[{ yAxis: 0, name: '盈亏平衡点' }]
+            }
+        }]
+    };
+    chartProfit.setOption(optionProfit);
+
+    // 监听窗口大小变化自动缩放图表
+    window.addEventListener('resize', function() {
+        chartReturn.resize();
+        chartProfit.resize();
+    });
+});
+</script>
