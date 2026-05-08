@@ -392,6 +392,13 @@ class ModelCLI:
             ret_df = pd.merge(ret_df, alpha158_df[alpha158_df['datetime'] == date], on='instrument', how='left', validate='one_to_one')
             ret_filter_df = self.filter_ret_df(ret_df)
             ret_df.to_csv(save_dir / f"{date_str}_ret.csv", index=True, encoding="utf-8-sig")
+            
+            # --- 新增: 强制剔除 pos_ratio 不大于 0.5 的记录 ---
+            if 'pos_ratio' in ret_filter_df.columns:
+                ret_filter_df = ret_filter_df[ret_filter_df['pos_ratio'] > 0.7]
+            # ---------------------------------------------------
+
+            
             ret_filter_df = ret_filter_df.reset_index(drop=True)
             ret_filter_df.to_csv(save_dir / f"{date_str}_filter_ret.csv", index=True, encoding="utf-8-sig")
             group_df.to_csv(save_dir / "total.csv", index=True, encoding="utf-8-sig")
