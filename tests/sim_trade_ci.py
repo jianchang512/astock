@@ -165,6 +165,10 @@ def select_trade_candidates(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
     ranked["avg_score"] = pd.to_numeric(ranked["avg_score"], errors="coerce")
     ranked["pos_ratio"] = pd.to_numeric(ranked["pos_ratio"], errors="coerce")
     ranked = ranked.dropna(subset=["avg_score", "pos_ratio"])
+    
+    # --- 新增: 仅保留 pos_ratio 大于 0.7 的记录 ---
+    ranked = ranked[ranked["pos_ratio"] > 0.7]
+    # ---------------------------------------------
     if ranked.empty: return ranked
     
     ranked = ranked.sort_values(by=["pos_ratio", "avg_score"], ascending=[False, False])
