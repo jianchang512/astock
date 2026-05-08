@@ -84,7 +84,7 @@ def generate_echarts_script(csv_path: str | Path) -> str:
 <!-- 引入 ECharts -->
 <script src="https://cdn.jsdelivr.net/npm/echarts@6.0.0/dist/echarts.min.js"></script>
 
-<h6>只购买 filter_ret 预测数据中看涨概率大于 0.7 的股票</h6>
+<h6>只购买 filter_ret 预测数据中看涨概率大于 0.8 的股票</h6>
 <!-- 图表容器 -->
 <div id="chart-return" style="width: 100%; height: 400px; margin-bottom: 40px;"></div>
 <div id="chart-profit" style="width: 100%; height: 400px;"></div>
