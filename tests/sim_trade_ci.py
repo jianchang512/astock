@@ -8,8 +8,7 @@
 本脚本用于针对 Qlib 预测结果进行“按日滚动”的 A 股历史回测。
 核心特色在于：
 1. 真实资金流修复：通过复权因子将 Qlib 默认的复权价还原为真实不复权价，以计算真实的买卖投入。
-2. 完美处理分红送转：通过记录买入和卖出时的“复权因子(factor)”，自动计算出
-   除权除息后的等效持仓股数（红利再投/送股自动计算）。
+2. 完美处理分红送转：通过复权价计算真实收益率，结合实际投入本金，精确还原除权除息后的净利。
 3. 停牌处理：若某股票在计划卖出日无行情（停牌），会自动结转至下一交易日继续持有。
 4. 自动化对比：一次性跑完不同单笔买入股数(300/600/1000)以及不同 TopN(1/3/5/10/15)
    的结果，并生成详细对比报表。
@@ -97,7 +96,6 @@ def get_price_info(instruments: list[str], date: str) -> dict[str, dict]:
         model_price = float(row["close"])
         factor = float(row["factor"]) if not pd.isna(row["factor"]) and float(row["factor"]) != 0 else 1.0
 
-        # ⭐ 核心修复：根据复权因子还原真实价格
         if PRICE_RESTORE_MODE == 1:
             real_price = model_price / factor
         elif PRICE_RESTORE_MODE == 2:
@@ -210,6 +208,10 @@ def backtest_final(
                 bc = pos["buy_cost"]
                 bfactor = pos["buy_factor"]
                 old_shares = pos["shares"]
+                
+                # 新增读取买入时的复权价和纯买入金额
+                model_bp = pos["buy_model_price"]
+                buy_amount = pos["buy_amount"]
 
                 info = sell_info.get(inst)
 
@@ -221,19 +223,28 @@ def backtest_final(
                 sp = info["real_price"]   
                 sfactor = info["factor"]  
 
-                # 分红/送股依然依靠因子比例调整等效股数
+                # 【仅作界面展示参考】分红/送股依然依靠因子比例调整等效股数
                 equiv_shares = old_shares * (sfactor / bfactor) if bfactor else old_shares
                 
-                sr = sell_revenue(sp, equiv_shares)
-                buy_amount = bp * old_shares
-                sell_amount = sp * equiv_shares
+                # ⭐ 修复核心逻辑开始：
+                # 1. 使用模型复权价，计算该股在这段时间内真正的理论收益率
+                stock_return_rate = (model_sp - model_bp) / model_bp if model_bp else 0.0
                 
+                # 2. 根据日收益率和前日买入金额，计算出包含除息等效价值的“理论卖出总金额”
+                theoretical_sell_amount = buy_amount * (1 + stock_return_rate)
+                
+                # 3. 将理论卖出金额作为基数，计算卖出手续费及实得现金(sr)
+                #    这里将总金额作为单价传入，股数传 1
+                sr = sell_revenue(theoretical_sell_amount, 1) 
+                
+                # 4. 计算各项费用和净利润
                 buy_fee = round(bc - buy_amount, 2)
-                sell_fee = round(sell_amount - sr, 2)
+                sell_fee = round(theoretical_sell_amount - sr, 2)
                 
-                gross = sell_amount - buy_amount
-                net = sr - bc
+                gross = theoretical_sell_amount - buy_amount
+                net = gross - buy_fee - sell_fee
                 fee = round(buy_fee + sell_fee, 2)
+                # ⭐ 修复核心逻辑结束
 
                 sell_instruments.append(inst)
                 day_sell_total += sr
@@ -250,7 +261,7 @@ def backtest_final(
                     "真实价格": round(sp, 4),
                     "复权因子": round(sfactor, 4),
                     "股数": round(equiv_shares, 2), 
-                    "金额(真金)": round(sr, 2),
+                    "金额(真金)": round(sr, 2),  # 现在为真正的等效卖出回款
                     "手续费": sell_fee,
                     "毛利润": round(gross, 2),
                     "净利润": round(net, 2),
@@ -276,14 +287,16 @@ def backtest_final(
                 bp = info["real_price"]
                 bfactor = info["factor"]
 
-                # ⭐ 所有投入产出，必须基于真实未复权价格计算
                 bc = buy_cost(bp, SHARES_PER_STOCK)
                 buy_amount = bp * SHARES_PER_STOCK
                 buy_fee = round(bc - buy_amount, 2)
 
+                # ⭐ 买入时必须把当前的 model_bp 和纯买入金额存进去，用于卖出结算
                 new_positions.append({
                     "instrument": inst,
                     "buy_real_price": bp,
+                    "buy_model_price": model_bp, # 记录模型复权价
+                    "buy_amount": buy_amount,    # 记录本金
                     "buy_cost": bc,
                     "buy_factor": bfactor,
                     "shares": SHARES_PER_STOCK
@@ -307,6 +320,7 @@ def backtest_final(
         previous_positions = still_hold + new_positions
 
         cum_profit += day_net_profit
+        # 因为所有底层结算均已修复，此时算出的 net 已经是复权基准，收益率自然也就完全正确了
         return_pct = day_net_profit / day_sell_buy_cost * 100 if day_sell_buy_cost else 0.0
 
         summary_rows.append({
