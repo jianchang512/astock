@@ -395,7 +395,7 @@ class ModelCLI:
             
             # --- 新增: 强制剔除 pos_ratio 不大于 0.5 的记录 ---
             if 'pos_ratio' in ret_filter_df.columns:
-                ret_filter_df = ret_filter_df[ret_filter_df['pos_ratio'] > 0.7]
+                ret_filter_df = ret_filter_df[ret_filter_df['pos_ratio'] > 0.8]
             # ---------------------------------------------------
 
             
