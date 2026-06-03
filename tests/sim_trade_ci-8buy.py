@@ -149,7 +149,7 @@ def load_all_filter_tables(score_dir: Path) -> dict[str, pd.DataFrame]:
     tables: dict[str, pd.DataFrame] = {}
     for subdir in get_score_subdirs(score_dir):
         for date_str in extract_all_dates_from_csv(subdir):
-            csv_path = subdir / f"{date_str}_ret.csv"
+            csv_path = subdir / f"{date_str}_filter_ret.csv"
             if not csv_path.exists(): continue
             try:
                 df = pd.read_csv(csv_path)
@@ -175,7 +175,7 @@ def select_trade_candidates(df: pd.DataFrame, top_n: int) -> pd.DataFrame:
     ranked = ranked.dropna(subset=["avg_score", "pos_ratio"])
     
     # --- 新增: 仅保留 pos_ratio 大于 0.7 的记录 ---
-    ranked = ranked[ranked["pos_ratio"] > 0.9]
+    ranked = ranked[ranked["pos_ratio"] > 0.5]
     # ---------------------------------------------
     if ranked.empty: return ranked
     
