@@ -5,10 +5,10 @@ on:
   workflow_dispatch:
 
   # 也可在 Review 完成后自动触发
-  #workflow_run:
-  #  workflows: ["Sim Trade"]
-  #  types:
-  #    - completed
+  workflow_run:
+    workflows: ["Sim Trade"]
+    types:
+      - completed
 
 permissions:
   contents: write
@@ -48,6 +48,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f "requirements.txt" ]; then
             pip install -r requirements.txt
+            pip install --force-reinstall mlflow==2.17.2
           else
             echo "⚠️ 警告: 未找到 requirements.txt，跳过安装。"
           fi
@@ -91,7 +92,7 @@ jobs:
       # ── 6. 运行模拟交易 ──
       - name: 运行模拟交易
         run: |
-          python tests/sim_trade_ci-8buy.py \
+          python tests/sim_trade_ci-ret.py \
           --provider_uri=~/.qlib/qlib_data/cn_data \
           --qlib_score_dir=./qlib_score_csv \
           --out=./tests8/sim_trade_result.csv \
