@@ -149,7 +149,7 @@ def load_all_filter_tables(score_dir: Path) -> dict[str, pd.DataFrame]:
     tables: dict[str, pd.DataFrame] = {}
     for subdir in get_score_subdirs(score_dir):
         for date_str in extract_all_dates_from_csv(subdir):
-            csv_path = subdir / f"{date_str}_filter_ret.csv"
+            csv_path = subdir / f"{date_str}_ret.csv"
             if not csv_path.exists(): continue
             try:
                 df = pd.read_csv(csv_path)
