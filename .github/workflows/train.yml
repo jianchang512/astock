@@ -53,6 +53,7 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f "requirements.txt" ]; then
             pip install -r requirements.txt
+            pip install --force-reinstall mlflow==2.17.2
           else
             echo "⚠️ 警告: 未找到 requirements.txt，跳过安装。"
           fi
