@@ -33,7 +33,7 @@ def filter_csv(file_path: Union[str, Path]) -> str:
     try:
         df = pd.read_csv(file_path)
         # 链式过滤提高性能
-        mask = (df['avg_score'] > 0) & (df['pos_ratio'] > 0.5)
+        mask = (df['avg_score'] > 0) & (df['pos_ratio'] > 0.8)
         filtered_df = df[mask].copy()
 
         def clean_code(text):
